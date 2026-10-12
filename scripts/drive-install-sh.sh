@@ -95,7 +95,9 @@ exit 0'
 }
 
 reset() { # a clean fake machine between scenarios
-  rm -rf "$WORK/stub" "$WORK/home" "$WORK/python.log"
+  # ${WORK:?} rather than $WORK: an empty WORK would make these three paths
+  # /stub, /home and /python.log, and this line runs `rm -rf` on them.
+  rm -rf "${WORK:?}/stub" "${WORK:?}/home" "${WORK:?}/python.log"
   mkdir -p "$WORK/home"
 }
 

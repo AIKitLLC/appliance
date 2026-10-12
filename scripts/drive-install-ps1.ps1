@@ -82,7 +82,13 @@ function Reset-Machine {
 }
 
 function Invoke-Install {
-    param([hashtable]$Env = @{})
+    # -StubOnlyPath is for the two scenarios that need docker ABSENT. The usual
+    # PATH carries system32 for tar.exe, and a GitHub windows runner has a real
+    # docker.exe reachable through it: the no-docker scenario then sailed past
+    # the check and ran `docker model status` against the real CLI. Those two
+    # scenarios refuse before any download, so they need no tools at all — and
+    # PowerShell's own cmdlets do not come from PATH.
+    param([hashtable]$Env = @{}, [switch]$StubOnlyPath)
     $saved = @{}
     # EMBABEL_BIN_DIR into the work area ON PURPOSE: install.ps1 writes the shim
     # and prepends it to the User PATH for real, and a test has no business
@@ -93,7 +99,7 @@ function Invoke-Install {
     # which is the whole point of the occupied-directory one — killed the run
     # under the host this script exists to exercise.
     $vars = @{
-        PATH            = $minPath
+        PATH            = if ($StubOnlyPath) { $stub } else { $minPath }
         EMBABEL_HOME    = (Join-Path $work 'home\embabel\worlds')
         EMBABEL_REF     = $ref
         EMBABEL_BIN_DIR = (Join-Path $work 'bin')
@@ -103,6 +109,13 @@ function Invoke-Install {
         $saved[$k] = [Environment]::GetEnvironmentVariable($k)
         [Environment]::SetEnvironmentVariable($k, $vars[$k])
     }
+    # 'Continue' for the capture: PS 5.1 wraps each stderr line of a NATIVE
+    # command in an ErrorRecord, and with ErrorActionPreference='Stop' that is
+    # terminating — so a child writing one line to stderr killed the harness
+    # instead of being an assertion about the child. The exit code is the verdict
+    # here, not the stream.
+    $outer = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
         # A child host, so an `exit 1` inside install.ps1 ends IT and not this
         # harness, and so 5.1 vs 7 is the host under test rather than the caller.
@@ -112,6 +125,7 @@ function Invoke-Install {
         $script:status = $LASTEXITCODE
         $script:output = $out
     } finally {
+        $ErrorActionPreference = $outer
         foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
     }
 }
@@ -157,7 +171,7 @@ try {
     # ── no Docker at all ────────────────────────────────────────────────────
     if (Test-Wanted 'no-docker' 'offline') {
         Reset-Machine
-        Invoke-Install
+        Invoke-Install -StubOnlyPath
         Assert-Scenario 'no-docker' 1 @(
             "No 'docker' on your PATH.",
             'Embabel needs Docker, and it is the only thing you have to install yourself.',
@@ -171,7 +185,7 @@ try {
         Reset-Machine
         New-Stub rdctl "@echo off`r`nexit /b 0"
         New-Stub nerdctl "@echo off`r`nexit /b 0"
-        Invoke-Install
+        Invoke-Install -StubOnlyPath
         Assert-Scenario 'rancher-containerd' 1 @(
             'Rancher Desktop is set to containerd.',
             'rdctl set --container-engine docker')

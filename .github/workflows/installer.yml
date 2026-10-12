@@ -47,8 +47,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # --severity=warning, not the default: at info level shellcheck reports
+      # style preferences (SC2015 on `A && B || C`, SC2086 on words that cannot
+      # split, SC2016 on single quotes that are single-quoted deliberately) and a
+      # gate that fails on taste gets switched off. Warnings and errors are the
+      # things that bite.
       - name: shellcheck, as POSIX sh
-        run: shellcheck -s sh install.sh doctor.sh scripts/drive-install-sh.sh
+        run: shellcheck --severity=warning -s sh install.sh doctor.sh scripts/drive-install-sh.sh
       # The workflow files themselves, because YAML that parses can still be a
       # workflow that cannot start: `shell: ${{ matrix.host }}` is valid YAML and
       # an invalid workflow, and GitHub reports that as a run with no jobs, no
