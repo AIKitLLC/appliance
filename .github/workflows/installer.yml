@@ -1,0 +1,93 @@
+name: Installer
+
+# The two one-command installers, on the machines they are actually piped into.
+#
+# check.yml covers what the repo can prove by reading itself. This covers what
+# install.sh and install.ps1 DO: every refusal a person can hit, and the whole
+# way through to the hand-off. Both harnesses stub Docker and Python rather than
+# needing either, which is what makes this a per-PR gate instead of a nightly.
+#
+# WHAT IS DELIBERATELY NOT HERE: starting the appliance. A GitHub-hosted windows
+# runner has no Docker Desktop and cannot run Linux containers at all, and a
+# real first install pulls ~15GB and takes minutes. That belongs on a machine
+# with Docker, nightly — not in front of a pull request.
+#
+# THE POSIX MATRIX IS SHELLS, NOT RUNNERS. install.sh is #!/bin/sh: dash on
+# Debian, busybox ash on Alpine. A bashism is invisible on ubuntu-latest, whose
+# /bin/sh is dash but whose everything-else is not, so the scenarios run inside
+# four distro images. Note `docker run` rather than `container:` — the runner's
+# bundled node is glibc-only, so actions/checkout cannot run inside Alpine; the
+# checkout stays on the host and the image gets the source mounted.
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: installer-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The ref the network scenarios download. A PR tests ITS OWN head, so a change
+  # that breaks the tarball fails here rather than after the merge. A fork's head
+  # is not in this repository, so those runs stay on the offline lane — the
+  # refusals are the part most likely to be edited anyway.
+  LANE: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'all' || 'offline' }}
+  EMBABEL_TEST_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  # Bashisms, unquoted expansions and the `local` that works everywhere except
+  # the one shell somebody runs. Cheap, and it reads the harness too: a test
+  # written with bash in mind would pass on ubuntu and fail on Alpine.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck, as POSIX sh
+        run: shellcheck -s sh install.sh doctor.sh scripts/drive-install-sh.sh
+
+  posix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # curl and tar are what install.sh assumes of the machine. Installing
+          # them here says that out loud: the image is the SHELL under test, not
+          # a claim that a bare image can run the installer.
+          - image: ubuntu:24.04
+            deps: apt-get update -qq && apt-get install -y -qq curl ca-certificates tar
+          - image: debian:12
+            deps: apt-get update -qq && apt-get install -y -qq curl ca-certificates tar
+          - image: alpine:3.21   # /bin/sh is busybox ash
+            deps: apk add --no-cache curl tar
+          - image: fedora:41
+            deps: dnf install -y -q curl tar
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scenarios on ${{ matrix.image }}
+        run: |
+          docker run --rm \
+            -v "$PWD":/src -w /src \
+            -e EMBABEL_TEST_REF="$EMBABEL_TEST_REF" \
+            ${{ matrix.image }} \
+            sh -c '${{ matrix.deps }} >/dev/null 2>&1 && sh scripts/drive-install-sh.sh '"$LANE"
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 5.1 is what a stranger pipes `irm | iex` into and is the host
+        # install.ps1's TLS 1.2, -UseBasicParsing and ASCII-only rules exist
+        # for; 7 is what a developer has. They are different enough to run both.
+        host: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scenarios under ${{ matrix.host }}
+        shell: ${{ matrix.host }}
+        run: ./scripts/drive-install-ps1.ps1 -Which $env:LANE
