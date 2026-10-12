@@ -18,6 +18,8 @@
 #   EMBABEL_HOME   where to install         (default: ~/embabel/worlds)
 #   EMBABEL_REF    branch or tag to fetch   (default: main)
 #   EMBABEL_MODE   worlds | me              (default: worlds)
+#   EMBABEL_REPO   org/repo of the source   (default: embabel-worlds/appliance)
+#   EMBABEL_TOKEN  GitHub token, private forks only
 
 set -eu
 
@@ -394,7 +396,15 @@ cd "$HOME_DIR"
 # runner, some containers — so `-r` passed and the redirect then died with
 # "/dev/tty: Device not configured", which is the raw failure this branch exists
 # to prevent. Actually opening it is the only test that means anything.
-if { : < /dev/tty; } 2>/dev/null; then
+#
+# IN A SUBSHELL, and that is the whole difference between falling through and
+# dying here. `:` is a POSIX SPECIAL built-in, and a redirection error on a
+# special built-in makes a non-interactive shell exit — so on the very machines
+# this branch exists for (CI, a container without -t, nohup) `{ : < /dev/tty; }`
+# did not return false, it ended the install. The last thing printed was "Done.
+# Starting setup", and setup never started: exit 1, no message, nothing to go on.
+# A subshell's exit is the subshell's, which is what makes the test a test.
+if ( : < /dev/tty ) 2>/dev/null; then
   if [ "$MODE" = "worlds" ]; then
     exec "$PY" ./worlds.py "$@" < /dev/tty
   else
