@@ -23,6 +23,16 @@ on:
   push:
   pull_request:
     types: [opened, synchronize, reopened]
+  # WEEKLY, because every scenario leans on something outside this repository:
+  # codeload's tarball, four distro images and their package mirrors, and the
+  # runner images themselves — a `windows-latest` that moves docker.exe again is
+  # exactly the bug this suite shipped with. A push-only gate notices none of
+  # that until somebody happens to push. Monday 04:37 UTC, off the hour to dodge
+  # the scheduler pileup, and on the full lane because `all` is what a
+  # non-pull_request event gets.
+  schedule:
+    - cron: '37 4 * * 1'
+  workflow_dispatch:
 
 concurrency:
   group: installer-${{ github.head_ref || github.ref }}
@@ -107,3 +117,27 @@ jobs:
       - name: Scenarios under ${{ matrix.host }}
         shell: pwsh
         run: '& ${{ matrix.host }} -NoProfile -File ./scripts/drive-install-ps1.ps1 -Which $env:LANE'
+
+  # ONE STABLE NAME to require as a status check. The matrix job names carry
+  # their parameters — "posix (debian:12, apt-get update -qq && …)" — so
+  # requiring them directly means a protection rule that silently orphans itself
+  # the next time a package list is edited, leaving a branch guarded by a check
+  # that can no longer run.
+  #
+  # `if: always()` with the results read EXPLICITLY, because a required check
+  # that is SKIPPED counts as satisfied: plain `needs` would skip this job when
+  # anything upstream failed, and the merge button would go green on a red
+  # matrix. Failing loudly is the whole job.
+  gate:
+    needs: [lint, posix, windows]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every installer job passed
+        env:
+          RESULTS: lint=${{ needs.lint.result }} posix=${{ needs.posix.result }} windows=${{ needs.windows.result }}
+        run: |
+          echo "$RESULTS"
+          case "$RESULTS" in
+            *failure*|*cancelled*|*skipped*) echo "::error::the installer suite did not pass"; exit 1 ;;
+          esac
