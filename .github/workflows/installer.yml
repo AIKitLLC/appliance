@@ -49,6 +49,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: shellcheck, as POSIX sh
         run: shellcheck -s sh install.sh doctor.sh scripts/drive-install-sh.sh
+      # The workflow files themselves, because YAML that parses can still be a
+      # workflow that cannot start: `shell: ${{ matrix.host }}` is valid YAML and
+      # an invalid workflow, and GitHub reports that as a run with no jobs, no
+      # logs and no annotation reachable from the API. Caught locally in seconds
+      # by the same image.
+      - name: actionlint
+        run: docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -shellcheck= -pyflakes=
 
   posix:
     runs-on: ubuntu-latest
@@ -88,6 +95,10 @@ jobs:
         host: [powershell, pwsh]
     steps:
       - uses: actions/checkout@v4
+      # `shell:` CANNOT take the matrix context — it is resolved before any
+      # context exists — so the host is invoked from the run line instead, where
+      # matrix is available. The harness re-launches whichever host is running
+      # it, so `powershell` here means every scenario executes under 5.1.
       - name: Scenarios under ${{ matrix.host }}
-        shell: ${{ matrix.host }}
-        run: ./scripts/drive-install-ps1.ps1 -Which $env:LANE
+        shell: pwsh
+        run: '& ${{ matrix.host }} -NoProfile -File ./scripts/drive-install-ps1.ps1 -Which $env:LANE'
