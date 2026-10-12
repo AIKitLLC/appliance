@@ -33,9 +33,10 @@ $ErrorActionPreference = 'Stop'
 # Force UTF-8 on the console so em-dashes, box borders, and other non-ASCII
 # characters in wizard prompts (from setup.py, the appliance's own logs) render
 # as intended. The Windows console codepage defaults to OEM 437/850 in most
-# shells, and Python 3 emits UTF-8 by default -- displayed in cp437, "--"
-# appears as "ù", box rules turn into scrambled shapes, and typed input can
-# lose characters at codepage boundaries. Setting both channels fixes this
+# shells, and Python 3 emits UTF-8 by default -- displayed in cp437, an em dash
+# appears as a stray accented letter, box rules turn into scrambled shapes, and
+# typed input can lose characters at codepage boundaries. Setting both channels
+# fixes this
 # session; the .cmd shim written below does the same via `chcp 65001` for
 # later runs. Silent if the current host does not surface Console (e.g. a
 # service context) -- setup will just look the way it did before.
@@ -316,8 +317,8 @@ rem Forwards to the Embabel appliance in $HomeDir. Written by install.ps1.
 rem Prefers the Python launcher; falls back to python.exe on PATH.
 rem chcp 65001: force the console to UTF-8 so em-dashes and box borders in
 rem wizard prompts render as intended -- default OEM 437/850 turns them into
-rem "ù" and other garbage, and setup becomes unreadable. >nul silences the
-rem "Active code page: 65001" line every invocation would otherwise print.
+rem stray accented letters and other garbage, and setup becomes unreadable.
+rem >nul silences the "Active code page: 65001" line every invocation prints.
 rem PYTHONUTF8=1: force Python's default text encoding to UTF-8 for files
 rem and subprocess pipes (a separate context from the console codepage).
 rem Without it, docker log reads and .env file reads default to cp1252 and
