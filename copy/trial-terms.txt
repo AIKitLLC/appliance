@@ -1,0 +1,11 @@
+Installing the Embabel appliance means accepting our Free Trial Terms and Conditions. Three things worth knowing before you do.
+
+The Free Trial is free of charge and is for evaluation, not for production use. It runs until we tell you in writing that it has ended.
+
+To keep using the Software after the Free Trial ends, you register an account with us, under separate terms we will give you then. ((Giving us your contact details through the early access form is not registering an account.))
+
+During the Free Trial the appliance sends us a randomly generated installation ID and nothing else.
+
+The full terms, which are what you are accepting rather than the summary above:
+
+    {doc_url}

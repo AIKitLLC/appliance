@@ -75,6 +75,11 @@ COMPOSE_PROJECT = "embabel-appliance"
 PHONE_HOME_ENDPOINT = "https://telemetry.embabel.com/v1/appliance"
 PHONE_HOME_VAR = "EMBABEL_PHONE_HOME"
 PHONE_HOME_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/PHONE_HOME.md"
+
+# The terms installing accepts. In this repository, next to PHONE_HOME.md and for
+# the same reason: the document has to be readable from a terminal session with
+# nothing but a URL, by someone who has not signed in anywhere yet.
+TRIAL_TERMS_DOC_URL = "https://github.com/embabel-worlds/appliance/blob/main/TRIAL_TERMS.md"
 def phone_home_on() -> bool:
     """Whether this appliance reports usage. False unless .env says true."""
     value = (os.environ.get(PHONE_HOME_VAR) or env_file_value(PHONE_HOME_VAR) or "").strip().lower()

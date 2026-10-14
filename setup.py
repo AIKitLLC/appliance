@@ -232,6 +232,17 @@ def main() -> int:
             uninstall()
             return 0
 
+        # BEFORE ANYTHING IS INSTALLED, and before the first write to .env. The
+        # terms are accepted by installing, so asking after the images are pulled
+        # would be telling someone what they had already done. Uninstall is above
+        # this line deliberately: leaving does not require agreeing to anything.
+        #
+        # Asked again on a resumed or repeated run, for the reason
+        # disclose_usage_reporting gives: showing it twice is better than
+        # remembering an acknowledgement that may belong to an install which
+        # never finished.
+        accept_trial_terms()
+
         # BEFORE EVERY VERB, as install.sh originally was. A configured appliance
         # raises AlreadySetUp before the success path, and an interrupted run tells
         # the operator to resume with this command, so either route must have restored
