@@ -6,6 +6,8 @@
   from it so the installer has something to point at and a person has something
   to read before accepting.
 
+  Regenerate with:  python3 scripts/docx-to-md.py "<the approved .docx>" > TRIAL_TERMS.md
+
   Do not edit the clauses here. Edit the .docx, have it approved, and regenerate.
   The clause numbers matter: the document cross-references them by number
   ("in accordance with clause 2", "under clause 2.1"), so numbering that drifts
