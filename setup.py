@@ -232,22 +232,27 @@ def main() -> int:
             uninstall()
             return 0
 
-        # BEFORE ANYTHING IS INSTALLED, and before the first write to .env. The
-        # terms are accepted by installing, so asking after the images are pulled
-        # would be telling someone what they had already done. Uninstall is above
-        # this line deliberately: leaving does not require agreeing to anything.
-        #
-        # Asked again on a resumed or repeated run, for the reason
-        # disclose_usage_reporting gives: showing it twice is better than
-        # remembering an acknowledgement that may belong to an install which
-        # never finished.
-        accept_trial_terms()
-
         # BEFORE EVERY VERB, as install.sh originally was. A configured appliance
         # raises AlreadySetUp before the success path, and an interrupted run tells
         # the operator to resume with this command, so either route must have restored
         # the forwarder before the wizard or its outcome can stop us.
         write_cli_shim()
+
+        # BEFORE ANYTHING IS STARTED: no image is pulled and no container exists
+        # until well below this line. The terms are accepted by installing, so
+        # asking afterwards would be telling someone what they had already done.
+        #
+        # ONLY ON A MACHINE THAT HAS NOT INSTALLED BEFORE. `embabel up` re-enters
+        # this function on a configured appliance, and that verb gets run by
+        # scripts, containers and cron with no terminal attached — a question
+        # there turns a routine restart into an exit 1. A machine with a
+        # configured mode has been through this already.
+        #
+        # Below write_cli_shim() so the forwarder is restored whatever the answer,
+        # and below ensure_port_block(), which has already written .env.
+        # --uninstall returns above both: leaving requires agreeing to nothing.
+        if not configured_mode():
+            accept_trial_terms()
 
         # What a bare `./setup.py --fresh` means: the door this machine was last
         # set up as, not a guess. Wiping a worlds appliance and bringing back the

@@ -401,13 +401,16 @@ def accept_trial_terms() -> None:
     this point, so there is nothing to undo and nothing to resume.
     """
     print("\n" + heading("Free trial terms"))
-    say("trial-terms", doc_url=TRIAL_TERMS_DOC_URL)
+    say("trial-terms", doc_url=TRIAL_TERMS_DOC_URL, phone_home_url=PHONE_HOME_DOC_URL)
 
     answer = prompt("\n  Accept and continue? [Y/n]: ").strip().lower()
     if answer not in ("", "y", "yes"):
         raise SetupError(
             "Setup stopped: the free trial terms were not accepted. Nothing has "
-            "been installed.\n  The terms are at: " + TRIAL_TERMS_DOC_URL
+            "been started and no data has been created.\n"
+            "  The installer has already unpacked the appliance into "
+            + APPLIANCE_DIR + "; delete that directory to remove it.\n"
+            "  The terms are at: " + TRIAL_TERMS_DOC_URL
         )
 
 
