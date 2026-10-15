@@ -31,8 +31,9 @@ from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, AlreadySetUp, SetupError,
                    Timeout, TokenRejected, Unreachable, prompt)
 from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
                         container_status, find_mode_container)
-from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, api_address,
-                       console_url, embabel_command, phone_home_on, resume_command, set_env_var)
+from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, TRIAL_TERMS_DOC_URL,
+                       api_address, console_url, embabel_command, phone_home_on,
+                       resume_command, set_env_var)
 from .status import STATUS, boot_phase, wait_until_serving
 from .colour import heading
 from .words import copy_text, say
@@ -387,6 +388,31 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
 
 
 # ── rendering ───────────────────────────────────────────────────────────────
+
+def accept_trial_terms() -> None:
+    """Show the free trial terms and take an answer, before anything is installed.
+
+    The terms are accepted by installing, which makes WHEN this runs the whole
+    point: after the images are pulled and the containers are up, a person has
+    already done the accepting and is only being told about it. So this sits at
+    the top of the run, before any state is written.
+
+    Declining is a clean stop rather than an error. Nothing has been installed at
+    this point, so there is nothing to undo and nothing to resume.
+    """
+    print("\n" + heading("Free trial terms"))
+    say("trial-terms", doc_url=TRIAL_TERMS_DOC_URL, phone_home_url=PHONE_HOME_DOC_URL)
+
+    answer = prompt("\n  Accept and continue? [Y/n]: ").strip().lower()
+    if answer not in ("", "y", "yes"):
+        raise SetupError(
+            "Setup stopped: the free trial terms were not accepted. Nothing has "
+            "been started and no data has been created.\n"
+            "  The installer has already unpacked the appliance into "
+            + APPLIANCE_DIR + "; delete that directory to remove it.\n"
+            "  The terms are at: " + TRIAL_TERMS_DOC_URL
+        )
+
 
 def disclose_usage_reporting(base: str) -> None:
     """Put the complete report shape in the first-run path, before setup closes.
