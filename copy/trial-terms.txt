@@ -1,13 +1,3 @@
-Installing the Embabel appliance means accepting our Free Trial Terms and Conditions. Three things worth knowing before you do.
-
-The Free Trial is free of charge and is for evaluation, not for production use. It runs until we tell you in writing that it has ended, or until it ends earlier under the Terms.
-
-To keep using the Software after the Free Trial ends you register an account with us, under separate terms we will give you then. If you do not register, you stop using the Software and delete your copies of it. ((Giving us your contact details through the early access form is not registering an account.))
-
-Usage reporting is off unless you turn it on. What it would send, and how to switch it on, is set out in full here:
-
-    {phone_home_url}
-
-The full terms, which are what you are accepting rather than the summary above:
+Installing the Embabel appliance means accepting our Free Trial Terms and Conditions. Read them before you do:
 
     {doc_url}

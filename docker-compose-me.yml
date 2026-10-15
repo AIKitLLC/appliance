@@ -303,6 +303,13 @@ services:
       # nothing. Set EMBABEL_PHONE_HOME=true in .env to opt in — setup.py resolves
       # that to the collector address, which lives in this repo and not in the image.
       - ASSISTANT_PHONE_HOME_ENDPOINT=${ASSISTANT_PHONE_HOME_ENDPOINT:-}
+      # THE TERMS SETUP ASKS FOR are the Free Trial Terms and Conditions, the copy in
+      # this repo, and only those. The image's defaults are the website's terms of use
+      # and privacy policy, which are not the agreement the trial runs under; an empty
+      # privacy URL leaves that link out. A new version asks everyone to agree again.
+      - ASSISTANT_SETUP_TERMS_URL=${ASSISTANT_SETUP_TERMS_URL:-https://github.com/embabel-worlds/appliance/blob/main/TRIAL_TERMS.md}
+      - ASSISTANT_SETUP_TERMS_VERSION=${ASSISTANT_SETUP_TERMS_VERSION:-2026-10-13}
+      - ASSISTANT_SETUP_PRIVACY_URL=${ASSISTANT_SETUP_PRIVACY_URL:-}
       # ENTITY EXTRACTION OFF BY DEFAULT. Every ingested document otherwise costs
       # an LLM call that asks a model to pull typed entities out of it, and on
       # this appliance it failed on every single one: the model returns a null
