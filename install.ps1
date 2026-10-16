@@ -82,7 +82,24 @@ function Step { param($m) Write-Host "  ::" -NoNewline -ForegroundColor Cyan; Wr
 function OK   { param($m) Write-Host "  OK" -NoNewline -ForegroundColor Green; Write-Host " $m" }
 function Note { param($m) Write-Host "  $m" -ForegroundColor DarkGray }
 function Warn { param($m) Write-Host "  !!" -NoNewline -ForegroundColor Yellow; Write-Host " $m" }
-function Die  { param($m) Write-Host ""; Write-Host "  !!" -NoNewline -ForegroundColor Yellow; Write-Host " $m" -ForegroundColor Red; exit 1 }
+function Die  { param($m) Write-Host ""; Write-Host "  !!" -NoNewline -ForegroundColor Yellow; Write-Host " $m" -ForegroundColor Red; Stop-Install 1 }
+
+# ---- Stopping without closing the window -------------------------------------
+# `irm ... | iex` runs this script INSIDE the user's own PowerShell session, so an
+# `exit` there does not end the script -- it closes their window, and takes with it
+# whatever setup or Die had just printed: a failed install looked like the shell
+# crashing, with no reason left on screen. So under iex: record the code in
+# $LASTEXITCODE and `break`, which ends the script and leaves the session alone
+# (the same choice Scoop's installer makes). Run as a FILE (`-File install.ps1`,
+# which is how scripts\drive-install-ps1.ps1 drives it) `exit` ends only this
+# script's host, and its exit code is what that harness asserts on -- so keep it.
+$RunAsFile = [bool]$PSCommandPath
+function Stop-Install {
+  param([int]$Code)
+  $global:LASTEXITCODE = $Code
+  if ($RunAsFile) { exit $Code }
+  break
+}
 
 # ---- Banner ------------------------------------------------------------------
 # The door you are actually installing, described in the SITE'S words. Same as
@@ -407,4 +424,9 @@ if ($Py.Length -eq 1) {
 } else {
   & $Py[0] $Py[1] $Script @args
 }
-exit $LASTEXITCODE
+$SetupExit = $LASTEXITCODE
+if ($SetupExit -ne 0) {
+  Write-Host ""
+  Warn "Setup did not finish (exit $SetupExit). Read the message above, then resume with: embabel up"
+}
+Stop-Install $SetupExit
