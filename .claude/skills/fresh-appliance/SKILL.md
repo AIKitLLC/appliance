@@ -1,6 +1,6 @@
 ---
 name: fresh-appliance
-description: Prove the appliance installs and works from NOTHING — wipe to a fresh install with the user's consent, walk first boot, then climb the acceptance ladder from container health to realm batteries to authoring surfaces. Use before cutting a release, after any change to install.sh / setup.py / compose files / first-boot behaviour, or when asked to test the appliance end to end.
+description: Prove the appliance installs and works from NOTHING — a fresh instance beside the existing appliance (or, with the user's consent, a wipe of it), walk first boot and the console onboarding, then climb the acceptance ladder from container health to realm batteries to authoring surfaces. Use before cutting a release, after any change to install.sh / setup.py / compose files / first-boot behaviour, or when asked to test the appliance end to end.
 ---
 
 A development skill for this repo. It does not ship: the product skills in `skills/` teach
@@ -8,15 +8,24 @@ users' agents; this one exists because the fresh-install experience is the one t
 developer's long-lived appliance never exercises. Every rung below either found a real
 regression once or guards a promise the installer makes in writing.
 
-## What fresh costs — say it before running anything
+## Install beside, not over
 
-The compose project name is a constant (`embabel-appliance`, setup.py), so this machine
-runs ONE appliance: there is no side-by-side test instance, and a fresh install is paid for
-with the current one's state. `./worlds.py --fresh` says exactly what dies before it asks —
-let it, and get explicit consent. What survives, so you can say so plainly: `.env` and
-`secrets.env` (files, not volumes — re-setup asks nothing), the realm checkouts under
-`realms/`, and every container in OTHER compose projects (`odoo-demo` among them, which is
-why the realm-odoo battery still has a source system to reconcile against afterwards).
+Every appliance is an INSTANCE: its own compose project (`embabel-<name>`), its own
+settings file (`.env.<name>` beside `.env`), and its own block of sixteen host ports,
+allocated when it is created and printed by the install (`Instance '<name>' uses ports
+…` — the API is the block's base + 1, the console base + 2). So a fresh install need not
+cost the developer's appliance anything: set `EMBABEL_INSTANCE=<name>` and it is a second
+appliance beside the first, sharing nothing. That is this skill's default. Afterwards,
+`embabel --instance <name> <verb>` reaches it, `embabel instances` lists what is installed,
+and `embabel --instance <name> uninstall` removes it.
+
+`--fresh` on the default instance (`appliance`) is the one path that pays with real state —
+use it only when the thing under test IS wiping or upgrading an existing appliance.
+`./worlds.py --fresh` says exactly what dies before it asks — let it, and get explicit
+consent. What survives, so you can say so plainly: `.env` and `secrets.env` (files, not
+volumes — re-setup asks nothing), the realm checkouts under `realms/`, and every container
+in OTHER compose projects (`odoo-demo` among them, which is why the realm-odoo battery
+still has a source system to reconcile against afterwards).
 
 ## Install
 
@@ -27,13 +36,23 @@ why the realm-odoo battery still has a source system to reconcile against afterw
   the assertions against a saved run without reinstalling. Drive it by hand when the point
   IS the hand-driving (a new question, a prompt's wording, the Tab completion on the realm
   directory — a harness that always presses Enter never sees those).
+- **The worlds door asks nothing in the terminal.** It prints `Finish in your browser` and a
+  link, `<console>/#setup=<token>`, and the console's onboarding creates the account,
+  checks the provider key as it is pasted, takes the terms and calls `/complete`.
+  `drive-install.py` asserts the terminal half; the account half is the console's, so
+  finish it there — that is the path a new user takes. Driving it headless instead means
+  calling the onboarding's own API with the token as `X-Embabel-Setup-Token` (read it with
+  `docker exec embabel-<name>-worlds-1 cat /data/embabel/assistant/admin/.setup-token`):
+  `POST /api/v1/setup/account`, `/provider`, `/terms` (the version `GET /api/v1/setup`
+  reports), `/complete`. That proves the API, not the page; say which one you did. The me
+  door still asks in the terminal, and `--username`/`--password` answer it.
 - **Credentials: `demo` / `terminat8r`, display name `Rod Johnson`.** Standardised so an
   install you made is one you can still drive an hour later. Guessing at a password on an
   instance you inherited wastes the session: the only recovery restarts the container and
   re-runs setup (embabel/me#997), and half the things worth testing — apps, the config
-  catalog, both MCP doors — need a credential that works. `drive-install.py` already
-  defaults `--display`; pass `--username demo --password terminat8r`. A LOCAL credential on
-  a 127.0.0.1-bound appliance: never reuse it anywhere reachable.
+  catalog, both MCP doors — need a credential that works. Type them into the onboarding
+  (worlds), or pass `--username demo --password terminat8r` to `drive-install.py` (me). A
+  LOCAL credential on a 127.0.0.1-bound appliance: never reuse it anywhere reachable.
 - `./worlds.py --fresh` for the worlds door, `./me.py --fresh` for me — ask which door the
   change under test affects; worlds is the default here.
 - Watch the first-boot log it streams. A stack trace swallowed by a healthy-looking wizard
@@ -42,9 +61,12 @@ why the realm-odoo battery still has a source system to reconcile against afterw
   `isatty()` is false, so the realm-directory question is never asked at all, getpass warns
   it cannot control echo, and colour switches off. That is why the harness uses a PTY, and
   why a "it installed fine" from a piped run proves less than it looks.
-- To test the real new-user path — the `curl | sh` installer — run `install.sh` with
-  `EMBABEL_REPO`/`EMBABEL_REF` pointed at the branch under test and `EMBABEL_HOME` at a
-  scratch directory. Same single-instance constraint: down the checkout instance first.
+- To test the real new-user path — the `curl | sh` installer — run
+  `EMBABEL_INSTANCE=<name> EMBABEL_HOME=<scratch> python3 scripts/drive-install.py --installer`,
+  with `EMBABEL_REPO`/`EMBABEL_REF` pointed at the branch under test if it is not main. It
+  installs beside the checkout's appliance; nothing has to come down first. When the
+  question is what people are actually downloading, check the served script IS this one:
+  `curl -fsSL https://worlds.embabel.com/install.sh | cmp - install.sh`.
 
 ## The ladder
 
@@ -65,10 +87,11 @@ correct org — a GitHub rename redirect keeps a stale reference working until t
 old name is reused. And the closing block ends on the two MCP doors, which is what anything
 agentic connects to.
 
-**L1 — surfaces serve.** The worlds API answers on its port (11043 unless `.env` says
-otherwise), the console serves on its (11044), Neo4j browser and bolt answer, and an MCP
-connection lists capabilities (`available_capabilities`). Use the admin credentials the
-wizard just printed — retyping stale ones tests your memory, not the install.
+**L1 — surfaces serve.** The worlds API and the console answer on the instance's ports
+(the default instance's are 11043 and 11044; any other's are in its `.env.<name>` and in
+the install's output), Neo4j browser and bolt answer, and an MCP connection lists
+capabilities (`available_capabilities`). Use the credentials the onboarding just created —
+retyping stale ones tests your memory, not the install.
 
 **L1.5 — both doors, and they differ.** `/mcp/chat` is the assistant surface
 (`embabel-chat`); `/mcp/code` is the building surface (`embabel-code`). Handshake each,
@@ -86,7 +109,8 @@ error. The empty case is the first thing a new user sees.
 **L3 — realm lifecycle.** Install a realm from the local checkout (realm-odoo is the
 fullest), confirm `realm_status` active, edit nothing, `realm_refresh`, still active.
 Degraded-with-reasons is a fail here: a fresh install plus a known-good realm has no
-excuse.
+excuse. Then run EVERY view the realm ships, on its defaults: a view that loads is not a
+view that answers.
 
 **L4 — seed and reconcile.** Run the realm's seed (gated, so consent again), then its
 shipped battery — `tests/verify.sh` with the keys from `secrets.env` — and require ALL
@@ -97,11 +121,16 @@ the realm ships the harness; this skill just insists it runs on a fresh box.
 **L5 — authoring works.** Save a view through `POST /api/v1/admin/kg/views` and invoke
 it. Create a handler through `action_brief` → `create_action`, dry-run it with
 `test_action`, and confirm it appears in the console's Handler Studio. Save a vibe app
-and load the page. These are the world-authoring surfaces; a fresh install where they
-fail is read-only in disguise.
+and load the page — and the installed realm's apps — in a real browser, through the
+CONSOLE's origin with a session (`GET /api/v1/auth/csrf`, then `POST /api/v1/auth/login`
+sending the token in the header that call names). An app opened on the API port without a
+session redirects to `/ui/login`, which only the console serves, so what renders is a 404:
+the harness's failure, not the app's. These are the world-authoring surfaces; a fresh
+install where they fail is read-only in disguise.
 
 **L6 — durability.** Restart the app container: state survives, realms still active.
-Re-run `./worlds.py` (no flag): idempotent, asks nothing, changes nothing. `--fresh`'s
+Re-run `./worlds.py` (no flag, same `EMBABEL_INSTANCE`): idempotent, asks nothing, changes
+nothing. `--fresh`'s
 own promise — that `.env` survival makes re-setup silent — is a rung because it was made
 in writing.
 
