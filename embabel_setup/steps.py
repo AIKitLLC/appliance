@@ -33,7 +33,8 @@ from .dockerlib import (_compose, _docker, boot_failure, container_started_at,
                         container_status, find_mode_container)
 from .settings import (PHONE_HOME_DOC_URL, PHONE_HOME_ENDPOINT, TRIAL_TERMS_DOC_URL,
                        api_address, console_url, embabel_command, phone_home_on,
-                       resume_command, set_env_var)
+                       record_terms_accepted, recorded_mode, resume_command,
+                       set_env_var, terms_accepted)
 from .status import STATUS, boot_phase, wait_until_serving
 from .colour import heading
 from .words import copy_text, say
@@ -389,6 +390,18 @@ def discover_token(base: str, container: str | None, explicit: str | None) -> st
 
 # ── rendering ───────────────────────────────────────────────────────────────
 
+def should_ask_trial_terms() -> bool:
+    """Whether this run is a first install that has not yet accepted the trial terms.
+
+    From .env alone. An install that already accepted says so there; one made before
+    acceptance was recorded still has its mode there, and `embabel up` on it runs from
+    scripts and cron with no terminal, where a question would turn a routine restart
+    into an exit 1. Never from the environment: `EMBABEL_MODE` in the shell is how a
+    first install picks its door, not evidence of an earlier one.
+    """
+    return not terms_accepted() and not recorded_mode()
+
+
 def accept_trial_terms() -> None:
     """Show the free trial terms and take an answer, before anything is installed.
 
@@ -412,6 +425,7 @@ def accept_trial_terms() -> None:
             + APPLIANCE_DIR + "; delete that directory to remove it.\n"
             "  The terms are at: " + TRIAL_TERMS_DOC_URL
         )
+    record_terms_accepted(time.strftime("%Y-%m-%d"))
 
 
 def disclose_usage_reporting(base: str) -> None:
