@@ -93,10 +93,16 @@ function Die  { param($m) Write-Host ""; Write-Host "  !!" -NoNewline -Foregroun
 # (the same choice Scoop's installer makes). Run as a FILE (`-File install.ps1`,
 # which is how scripts\drive-install-ps1.ps1 drives it) `exit` ends only this
 # script's host, and its exit code is what that harness asserts on -- so keep it.
+#
+# The same goes for the working directory: setup has to run from the install
+# directory, and under iex a Set-Location there moved the user's own prompt into it
+# and left it there. So the move is a Push-Location, and stopping pops it.
 $RunAsFile = [bool]$PSCommandPath
+$MovedIntoHome = $false
 function Stop-Install {
   param([int]$Code)
   $global:LASTEXITCODE = $Code
+  if ($MovedIntoHome) { Pop-Location }
   if ($RunAsFile) { exit $Code }
   break
 }
@@ -410,7 +416,8 @@ if (-not $Py) {
 OK "Done. Starting setup -- after this, use the 'embabel' command."
 Write-Host ""
 
-Set-Location $HomeDir
+Push-Location $HomeDir
+$MovedIntoHome = $true
 $Script = if ($Mode -eq 'worlds') { '.\worlds.py' } else { '.\me.py' }
 
 # Note on stdin: install.sh reopens /dev/tty because `curl ... | sh` has already
