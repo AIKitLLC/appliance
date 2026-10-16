@@ -177,6 +177,36 @@ def configured_mode() -> str | None:
                     value = line.split("=", 1)[1].strip()
                     return value if value in MODE_COMPOSE else None
     return None
+def recorded_mode() -> str | None:
+    """The door .env records — what this INSTALL has been set up as.
+
+    Not configured_mode(): that one answers from the environment first, which is right
+    for choosing a door and wrong for "has this machine installed before?". The
+    documented install names its mode (`EMBABEL_MODE=worlds … | sh`), so on a machine
+    that has never installed anything configured_mode() already says "worlds".
+    """
+    value = (env_file_value("EMBABEL_MODE") or "").strip()
+    return value if value in MODE_COMPOSE else None
+
+
+# The trial terms are accepted once, at first install, and the answer is kept in .env
+# so a run interrupted after accepting does not ask again on resume.
+TERMS_VAR = "EMBABEL_TERMS_ACCEPTED"
+
+
+def terms_accepted() -> bool:
+    """Whether this install's .env records that the trial terms were accepted."""
+    return bool((env_file_value(TERMS_VAR) or "").strip())
+
+
+def record_terms_accepted(when: str) -> None:
+    """Write the acceptance into .env. [when] is the date, YYYY-MM-DD."""
+    set_env_var(TERMS_VAR, when, (
+        "# When the free trial terms were accepted at install. While this line is",
+        "# here setup does not ask again.",
+    ))
+
+
 def remember_mode(mode: str) -> None:
     """Record the door, so the CLI can come back to it rather than to its default."""
     if configured_mode() == mode:

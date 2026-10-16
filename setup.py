@@ -245,13 +245,15 @@ def main() -> int:
         # ONLY ON A MACHINE THAT HAS NOT INSTALLED BEFORE. `embabel up` re-enters
         # this function on a configured appliance, and that verb gets run by
         # scripts, containers and cron with no terminal attached — a question
-        # there turns a routine restart into an exit 1. A machine with a
-        # configured mode has been through this already.
+        # there turns a routine restart into an exit 1. The answer comes from .env
+        # alone (see should_ask_trial_terms): this used configured_mode(), which
+        # reads EMBABEL_MODE from the environment first, so the documented
+        # `EMBABEL_MODE=worlds` install looked set up and never asked.
         #
         # Below write_cli_shim() so the forwarder is restored whatever the answer,
         # and below ensure_port_block(), which has already written .env.
         # --uninstall returns above both: leaving requires agreeing to nothing.
-        if not configured_mode():
+        if should_ask_trial_terms():
             accept_trial_terms()
 
         # What a bare `./setup.py --fresh` means: the door this machine was last
