@@ -720,6 +720,11 @@ word. `setup.py` owns it now, so they cannot drift again.
 - **It verifies.** The image digest is read before and after, then the
   container's actual image id is checked — "pulled" and "the container is
   running it" are different claims.
+- **The guides follow.** The appliance keeps its own documentation indexed in
+  your world: it reads `guides.json` from the repository this checkout follows
+  when it starts and once a day after, indexes guides that are new or changed,
+  and removes ones that were withdrawn. It only ever removes documents it put
+  there, so nothing you added is touched. No command, and no password.
 - **It builds nothing.** The compose files are pull-only by design. If the
   published image turns out to be *older* than a local build it just replaced,
   it says so — that is what `upgrade` means, but a local build vanishing in

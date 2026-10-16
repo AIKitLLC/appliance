@@ -77,6 +77,12 @@ services:
       # remapped port leaves every code-mode call dialling nothing. Moving the
       # appliance to another port therefore moves both sides together.
       - SERVER_PORT=${ASSISTANT_PORT:-11042}
+      # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
+      # guides.json from the repository this checkout follows and indexes what is new
+      # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
+      # EMBABEL_REPO in .env) is told about that branch's guides and not main's.
+      - ASSISTANT_GUIDES_REPOSITORY=${EMBABEL_REPO:-embabel-worlds/appliance}
+      - ASSISTANT_GUIDES_REF=${EMBABEL_REF:-main}
       # Two MCP doors — see the worlds compose file's note. /mcp (also /mcp/chat)
       # is the chat surface, `embabel-chat`; /mcp/code is the building surface,
       # `embabel-code`, which is where setup wires coding agents. The server names

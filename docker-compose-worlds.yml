@@ -78,6 +78,12 @@ services:
         required: false
     environment:
       - SERVER_PORT=${WORLDS_PORT:-11043}
+      # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
+      # guides.json from the repository this checkout follows and indexes what is new
+      # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
+      # EMBABEL_REPO in .env) is told about that branch's guides and not main's.
+      - ASSISTANT_GUIDES_REPOSITORY=${EMBABEL_REPO:-embabel-worlds/appliance}
+      - ASSISTANT_GUIDES_REF=${EMBABEL_REF:-main}
       # TWO MCP DOORS from the one server, named for their SURFACES:
       #
       #   /mcp  (also /mcp/chat)  embabel-chat  a chat client — Cowork, Desktop —

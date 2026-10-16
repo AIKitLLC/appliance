@@ -74,6 +74,8 @@ SPEC_DOCS = ("VIRTUAL_CYPHER.md", "VIRTUAL_CYPHER_GUIDE.md", "README.md",
 # Big enough for the guides, small enough that a stray file cannot become an
 # ingestion job somebody did not ask for.
 SEED_MAX_BYTES = 512 * 1024
+# The mark on every guide the appliance ships. The server holds the same word.
+SEED_TAG = "embabel-docs"
 def remember_provider_key(provider: str, api_key: str) -> None:
     """Write the provider key setup just collected into .env.
 
@@ -187,18 +189,58 @@ def upload_name(path: str) -> str:
     """The filename to upload a guide under — which is also its identity.
 
     The server keys a document on the name it arrives with, so two uploads that
-    share one lose the first. Every skill is `skills/<name>/SKILL.md`, so all
-    seven arrived as "SKILL.md" and collapsed into a single document: six skills
-    silently unsearchable, with the installer still reporting 26 indexed because
-    each POST really did succeed. The realm spec already carries a prefix for
-    this exact reason; skills needed the same and did not have it.
+    share one lose the first. Every skill is `skills/<name>/SKILL.md`, and there is
+    a README at three levels, so a file inside a folder carries the folder's name in
+    front: `world-authoring SKILL.md`, `guide README.md`. A file at the top of the
+    checkout keeps its own.
+
+    ONE RULE, SHARED. The Worlds console names the guides it uploads the same way,
+    and so does guides.json, which is what the appliance reads to keep them current.
+    Three names for one guide is three documents: this used to prefix only skills,
+    so `docs/guide/README.md` replaced the top-level README and a world set up in a
+    terminal held `clients.md` where one set up in a browser held `guide clients.md`.
     """
-    parts = path.split(os.sep)
-    if "skills" in parts:
-        owner = parts[parts.index("skills") + 1:-1]
-        if owner:
-            return f"{owner[-1]} {os.path.basename(path)}"
-    return os.path.basename(path)
+    relative = os.path.relpath(path, APPLIANCE_DIR)
+    if relative.startswith(os.pardir):
+        # Not in the checkout: a fetched spec page, already named for where it came from.
+        return os.path.basename(path)
+    parts = relative.split(os.sep)
+    return f"{parts[-2]} {parts[-1]}" if len(parts) > 1 else parts[-1]
+
+
+def former_name(path: str) -> str | None:
+    """The name a terminal install up to this release indexed [path] under, when it differs.
+
+    That installer prefixed only skills, and only with a folder below `skills/`, so
+    `docs/guide/clients.md` went in as `clients.md` and `skills/VOICE.md` as `VOICE.md`.
+    Those copies carry no tag, so nothing could tell them from the owner's own files;
+    guides.json names them, and the appliance removes each one once. A former name that
+    a current guide still uses — `README.md` — is not listed: that copy is replaced.
+    """
+    parts = os.path.relpath(path, APPLIANCE_DIR).split(os.sep)
+    owner = parts[parts.index("skills") + 1:-1] if "skills" in parts else []
+    old = f"{owner[-1]} {parts[-1]}" if owner else parts[-1]
+    return old if old != upload_name(path) else None
+
+
+def guide_manifest() -> dict:
+    """What guides.json must say: every guide this checkout ships, and the spec pages.
+
+    The appliance reads that file from the repository to index the guides itself, so
+    it is the published form of [documentation_files]. scripts/check-guides.py fails
+    when the two disagree, and rewrites the file when asked.
+    """
+    files = documentation_files()
+    current = {upload_name(path) for path in files}
+    guides = []
+    for path in files:
+        guide = {"name": upload_name(path), "path": os.path.relpath(path, APPLIANCE_DIR).replace(os.sep, "/")}
+        old = former_name(path)
+        if old and old not in current:
+            guide["formerly"] = [old]
+        guides.append(guide)
+    guides += [{"name": f"realm-spec {name}", "url": f"{SPEC_REPO}/{name}"} for name in SPEC_DOCS]
+    return {"guides": sorted(guides, key=lambda guide: guide["name"])}
 
 
 def _upload_document(base: str, auth: str, path: str) -> bool:
@@ -211,7 +253,12 @@ def _upload_document(base: str, auth: str, path: str) -> bool:
     with open(path, "rb") as f:
         content = f.read()
     name = upload_name(path)
+    # TAGGED, so `embabel docs sync` can later tell a guide this installer put here from
+    # a document the owner added, and remove the first kind when it is withdrawn.
     body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="tags"\r\n\r\n'
+        f"{SEED_TAG}\r\n"
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'
         "Content-Type: text/markdown\r\n\r\n"
