@@ -1,0 +1,167 @@
+{
+  "guides": [
+    {
+      "name": "CLI.md",
+      "path": "CLI.md"
+    },
+    {
+      "name": "PHONE_HOME.md",
+      "path": "PHONE_HOME.md"
+    },
+    {
+      "name": "README.md",
+      "path": "README.md"
+    },
+    {
+      "name": "WORLD_TEMPLATES.md",
+      "path": "WORLD_TEMPLATES.md"
+    },
+    {
+      "name": "appliance-doctor SKILL.md",
+      "path": "skills/appliance-doctor/SKILL.md"
+    },
+    {
+      "name": "embabel-client SKILL.md",
+      "path": "skills/embabel-client/SKILL.md"
+    },
+    {
+      "name": "guide README.md",
+      "path": "docs/guide/README.md"
+    },
+    {
+      "name": "guide clients.md",
+      "path": "docs/guide/clients.md",
+      "formerly": [
+        "clients.md"
+      ]
+    },
+    {
+      "name": "guide coding-agents.md",
+      "path": "docs/guide/coding-agents.md",
+      "formerly": [
+        "coding-agents.md"
+      ]
+    },
+    {
+      "name": "guide concepts.md",
+      "path": "docs/guide/concepts.md",
+      "formerly": [
+        "concepts.md"
+      ]
+    },
+    {
+      "name": "guide local-models.md",
+      "path": "docs/guide/local-models.md",
+      "formerly": [
+        "local-models.md"
+      ]
+    },
+    {
+      "name": "guide privacy.md",
+      "path": "docs/guide/privacy.md",
+      "formerly": [
+        "privacy.md"
+      ]
+    },
+    {
+      "name": "guide realms.md",
+      "path": "docs/guide/realms.md",
+      "formerly": [
+        "realms.md"
+      ]
+    },
+    {
+      "name": "guide tours.md",
+      "path": "docs/guide/tours.md",
+      "formerly": [
+        "tours.md"
+      ]
+    },
+    {
+      "name": "guide troubleshooting.md",
+      "path": "docs/guide/troubleshooting.md",
+      "formerly": [
+        "troubleshooting.md"
+      ]
+    },
+    {
+      "name": "how-it-works SKILL.md",
+      "path": "skills/how-it-works/SKILL.md"
+    },
+    {
+      "name": "realm-doctor SKILL.md",
+      "path": "skills/realm-doctor/SKILL.md"
+    },
+    {
+      "name": "realm-spec CONTEXT.md",
+      "url": "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main/CONTEXT.md"
+    },
+    {
+      "name": "realm-spec DECLARING_TYPES.md",
+      "url": "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main/DECLARING_TYPES.md"
+    },
+    {
+      "name": "realm-spec EXTERNAL_DOCUMENTS.md",
+      "url": "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main/EXTERNAL_DOCUMENTS.md"
+    },
+    {
+      "name": "realm-spec LABELS_AND_COMPOSITION.md",
+      "url": "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main/LABELS_AND_COMPOSITION.md"
+    },
+    {
+      "name": "realm-spec README.md",
+      "url": "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main/README.md"
+    },
+    {
+      "name": "realm-spec VIRTUAL_CYPHER.md",
+      "url": "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main/VIRTUAL_CYPHER.md"
+    },
+    {
+      "name": "realm-spec VIRTUAL_CYPHER_GUIDE.md",
+      "url": "https://raw.githubusercontent.com/embabel-worlds/realm-spec/main/VIRTUAL_CYPHER_GUIDE.md"
+    },
+    {
+      "name": "relentless-testing SKILL.md",
+      "path": "skills/relentless-testing/SKILL.md"
+    },
+    {
+      "name": "scout-agents SKILL.md",
+      "path": "skills/scout-agents/SKILL.md"
+    },
+    {
+      "name": "scout-realms SKILL.md",
+      "path": "skills/scout-realms/SKILL.md"
+    },
+    {
+      "name": "skills README.md",
+      "path": "skills/README.md"
+    },
+    {
+      "name": "skills VOICE.md",
+      "path": "skills/VOICE.md",
+      "formerly": [
+        "VOICE.md"
+      ]
+    },
+    {
+      "name": "tour-authoring SKILL.md",
+      "path": "skills/tour-authoring/SKILL.md"
+    },
+    {
+      "name": "vibe-apps SKILL.md",
+      "path": "skills/vibe-apps/SKILL.md"
+    },
+    {
+      "name": "vibe-apps browser-harness.md",
+      "path": "skills/vibe-apps/browser-harness.md"
+    },
+    {
+      "name": "world-atlas SKILL.md",
+      "path": "skills/world-atlas/SKILL.md"
+    },
+    {
+      "name": "world-authoring SKILL.md",
+      "path": "skills/world-authoring/SKILL.md"
+    }
+  ]
+}
