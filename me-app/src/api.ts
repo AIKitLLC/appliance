@@ -677,6 +677,14 @@ const KIT_ROUTES: { method: RequestSpec['method']; path: RegExp }[] = [
    * and WorldLists query, so these lists answer from the same rows chat and Query Studio do.
    */
   { method: 'POST', path: /^\/api\/v1\/admin\/kg\/execute$/ },
+  /*
+   * Sweeps (fills): the slow materializations the appliance drives over hours or days. Listed,
+   * started, and stopped — a stop is a DELETE of one, so the id is a single segment and never a
+   * dot segment, the same guard the agent routes above use for the same reason.
+   */
+  { method: 'GET', path: /^\/api\/v1\/admin\/kg\/fills$/ },
+  { method: 'POST', path: /^\/api\/v1\/admin\/kg\/fills$/ },
+  { method: 'DELETE', path: /^\/api\/v1\/admin\/kg\/fills\/(?!\.\.?(?:\/|$))[^/?#]+$/ },
   { method: 'POST', path: /^\/api\/v1\/cron\/compile-schedule$/ },
 ]
 
