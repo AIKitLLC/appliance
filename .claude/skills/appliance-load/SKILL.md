@@ -80,6 +80,14 @@ wrote this file.
   one unchanging target is 16/16 cache hits by the second rung — a warm-path curve presented as
   the cost of answering. The script prints the ratio. Either vary parameters to pay for the cold
   path, or state plainly that the number is warm.
+- **A cold box has a lower knee, so let it settle.** The first run of this skill saw wrong answers
+  and failures at 256 concurrency; re-run on the same instance once it had settled, 256 was
+  completely clean and only 512 failed. Nothing was fixed in between. Warming up (JIT, caches,
+  pools filling) lowers the concurrency at which an appliance starts refusing, so a number taken
+  minutes after setup describes the warm-up, not the appliance. Record how long since setup or
+  boot beside the curve, and do not compare a cold run to a settled one. Separately: for about
+  12-19 seconds after `/api/v1/setup/complete` returns, the appliance does not answer AT ALL —
+  honest, but a script that calls straight on from `/complete` will see a dead socket.
 - **Latency is noisy; counts are not.** Run to run on one laptop moved p50 by ~15%, which was
   enough to make a 14% "improvement" evaporate on repetition. Trust call counts, row counts and
   failure counts; treat a latency delta under about 20% as nothing until it repeats.
@@ -93,9 +101,11 @@ Climb in order. A rung that fails stops the climb: diagnose (`realm-doctor` for 
 *healthy* and not merely running. `fresh-appliance`'s L0–L1 is the gate; there is no point loading
 a box that is not serving.
 
-**L1 — the uncontended cost of everything you will load.** One call each, timed, correct. This is
-the denominator: a p50 at concurrency 32 means nothing without it, and a target that is already
-slow here is a different bug.
+**L1 — the uncontended cost of everything you will load, on a SETTLED box.** One call each,
+timed, correct. This is the denominator: a p50 at concurrency 32 means nothing without it, and a
+target that is already slow here is a different bug. Let the instance settle first and say how long
+you waited — a cold appliance has a measurably lower knee (see the traps), so a ladder begun
+straight after setup measures the warm-up.
 
 **L2 — the ladder, on the main door.** `scripts/load-appliance.py --instance <name> --ladder
 1,4,16,64 --rounds 2`. Saved-view invoke (`POST /api/v1/views/{name}/invoke`) and ad-hoc Cypher
@@ -103,7 +113,11 @@ slow here is a different bug.
 not a number: where does p50 leave the uncontended cost behind, and where does p95 detach from
 p50? The second is the queue forming.
 
-**L3 — past the knee.** Keep raising concurrency until requests fail, and record where. At the
+**L3 — past the knee.** Keep raising concurrency until requests fail, and record where. Raising
+`NEO4J_POOL_MAX` is the first thing anyone will suggest; measured, it converts refusals into
+waiting rather than making anything faster, and at the appliance it did not help at all (512
+concurrency, 50 -> 200: failures went 121 -> 182). So record the pool you ran at, and do not
+reach for it as a fix before knowing the failure is the graph refusing work. At the
 default pool size that has been somewhere between 128 and 256 concurrent engine runs; an appliance
 that falls over much earlier has something else wrong, and one that sails past it is worth
 understanding too. Record the pool size you ran at beside the number, or the number means nothing.
