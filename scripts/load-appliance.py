@@ -178,16 +178,23 @@ class Target:
             fingerprint(payload, compare),
             ms,
             payload[:300].decode("utf-8", "replace"),
-            cache_hit(payload),
+            no_external_calls(payload),
         )
 
 
-def cache_hit(payload: bytes) -> bool | None:
-    """Whether the appliance served this from cache, as its own metrics block reports.
+def no_external_calls(payload: bytes) -> bool | None:
+    """Whether this response reached NOTHING outside the appliance.
 
-    Load over one unchanging target measures the WARM path after the first response — the view
-    envelope says `cacheHit` outright, so a run that does not report it is quietly presenting
-    cache-hit latency as the cost of answering.
+    The envelope calls this `cacheHit`, and it is not one: the server sets it from
+    `apiCalls == 0 && semanticCalls == 0 && error == null`, so it is true for any view over stored
+    or virtual data whether or not a single thing was cached. Reading it as "served from cache" is
+    a mistake this repo has already made twice — once by an author who saw `externalCalls: 0,
+    cacheHit: true` while ten seconds went on re-deriving a label (embabel/me#2028 added
+    `DerivationMeter` because of it), and once by the first version of this script, which reported
+    a 100%-cache-hit column for a view that was in fact paying full cost on every single call.
+
+    So it is reported under its real meaning. It tells you the curve is NOT the cost of an external
+    source — which makes it useful, just not as evidence of caching.
     """
     try:
         doc = json.loads(payload)
@@ -197,10 +204,10 @@ def cache_hit(payload: bytes) -> bool | None:
 
 
 class Outcome:
-    __slots__ = ("ms", "status", "fp", "detail", "cached")
+    __slots__ = ("ms", "status", "fp", "detail", "no_ext")
 
-    def __init__(self, ms: float, status: int, fp: str, detail: str, cached: bool | None = None):
-        self.ms, self.status, self.fp, self.detail, self.cached = ms, status, fp, detail, cached
+    def __init__(self, ms: float, status: int, fp: str, detail: str, no_ext: bool | None = None):
+        self.ms, self.status, self.fp, self.detail, self.no_ext = ms, status, fp, detail, no_ext
 
     @property
     def ok(self) -> bool:
@@ -218,9 +225,9 @@ def run_rung(client: Client, target: Target, concurrency: int, compare: str) -> 
             gate.wait()
         except threading.BrokenBarrierError:
             return
-        status, fp, ms, detail, cached = target.once(client, compare)
+        status, fp, ms, detail, no_ext = target.once(client, compare)
         with lock:
-            results.append(Outcome(ms, status, fp, detail, cached))
+            results.append(Outcome(ms, status, fp, detail, no_ext))
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         for f in [pool.submit(worker) for _ in range(concurrency)]:
@@ -339,7 +346,7 @@ def main() -> int:
     print(f"\nappliance load — instance={args.instance} base={base} pool-max={pool_max}")
     print(
         f"{'target':<22} {'conc':>5} {'ok':>5} {'bad':>4} {'wrong':>6} "
-        f"{'p50':>8} {'p95':>9} {'max':>9} {'cached':>7}"
+        f"{'p50':>8} {'p95':>9} {'max':>9} {'no-ext':>7}"
     )
 
     wrong_anywhere = 0
@@ -368,18 +375,19 @@ def main() -> int:
                     "maxMs": round(max(lat), 1) if lat else 0.0,
                     "meanMs": round(statistics.fmean(lat), 1) if lat else 0.0,
                     "failureKinds": sorted({f"{o.status}:{o.detail[:80]}" for o in outs if not o.ok}),
-                    "cacheHits": sum(1 for o in good if o.cached),
-                    "cacheReported": sum(1 for o in good if o.cached is not None),
+                    "noExternalCalls": sum(1 for o in good if o.no_ext),
+                    "externalityReported": sum(1 for o in good if o.no_ext is not None),
                 }
                 rows.append(row)
                 flag = "  <-- WRONG" if wrong else ""
-                cached = (
-                    f"{row['cacheHits']}/{row['cacheReported']}" if row["cacheReported"] else "-"
+                no_ext = (
+                    f"{row['noExternalCalls']}/{row['externalityReported']}"
+                    if row["externalityReported"] else "-"
                 )
                 print(
                     f"{target.name:<22} {conc:>5} {row['ok']:>5} {row['failed']:>4} "
                     f"{row['wrongAnswers']:>6} {row['p50Ms']:>7}ms {row['p95Ms']:>8}ms "
-                    f"{row['maxMs']:>8}ms {cached:>7}{flag}"
+                    f"{row['maxMs']:>8}ms {no_ext:>7}{flag}"
                 )
         report["targets"][target.name] = {"groundTruth": truth, "uncontendedMs": round(ms, 1), "rungs": rows}
 
@@ -399,9 +407,11 @@ def main() -> int:
         return 1
     print("\nEvery answer under load matched the uncontended one. Latency above is the finding.")
     print(
-        "`cached` is how many of the OK responses the appliance served from cache. A high count "
-        "means the curve is the warm path: say so, or vary the target's parameters to pay for the "
-        "cold one."
+        "`no-ext` is how many OK responses reached nothing outside the appliance. It is the "
+        "envelope's `cacheHit` field, which is NOT a cache hit — the server sets it from "
+        "apiCalls==0 && semanticCalls==0, so a view over stored or virtual data reports it whether "
+        "anything was cached or not. It tells you the curve is not an external source's cost; it "
+        "does NOT tell you the work was skipped."
     )
     return 0
 

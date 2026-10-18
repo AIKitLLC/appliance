@@ -76,10 +76,17 @@ wrote this file.
   names is the concurrency it applied. The same trap voids a naive `for` loop or a ramp.
 - **A failed request is data, not a reason to stop.** Past saturation some will not answer; the
   run must carry on and report how many, of what kind, and whether what did answer was right.
-- **The cache makes the second call cheap.** A view envelope reports `cacheHit`, and a ladder over
-  one unchanging target is 16/16 cache hits by the second rung — a warm-path curve presented as
-  the cost of answering. The script prints the ratio. Either vary parameters to pay for the cold
-  path, or state plainly that the number is warm.
+- **`cacheHit` IN THE ENVELOPE IS NOT A CACHE HIT**, and believing it is the most expensive
+  mistake available here. The server sets it from `apiCalls == 0 && semanticCalls == 0 && error ==
+  null`, so it is true for ANY view over stored or virtual data whether a single thing was cached
+  or not. The first run of this skill duly reported a view as 64/64 "cache hits" and called its
+  curve the warm path — while that view was in fact paying a full probe, materialise, read and
+  cleanup cycle on every one of those calls. The same misreading cost somebody ten seconds of
+  re-derivation they could not find (embabel/me#2028, which added `DerivationMeter` because the two
+  numbers an author had both pointed away from the cost). The script now reports the field as
+  `no-ext`, meaning "reached nothing outside the appliance", which is what it says. To learn
+  whether work was actually SKIPPED, read the duration against an uncontended call and look at the
+  appliance log for what the run did — materialised node counts and sweep timings are there.
 - **A cold box has a lower knee, so let it settle.** The first run of this skill saw wrong answers
   and failures at 256 concurrency; re-run on the same instance once it had settled, 256 was
   completely clean and only 512 failed. Nothing was fixed in between. Warming up (JIT, caches,
@@ -144,7 +151,7 @@ set of volumes; a skill that leaves one behind every month is how a machine runs
 ## Report, and grow the list
 
 Report the ladder as climbed: each rung, pass or the exact failure. Give the curve as a table with
-the uncontended cost beside it, the pool size it was measured at, the cache-hit ratio, and the
+the uncontended cost beside it, the pool size it was measured at, the `no-ext` ratio, and the
 container count on the box — a figure without those four is not reproducible and should not be
 quoted later.
 
