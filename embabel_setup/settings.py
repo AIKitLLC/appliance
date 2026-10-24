@@ -504,6 +504,9 @@ def volume_name(key: str) -> str:
     """The real Docker volume name — compose prefixes every volume with the project."""
     return f"{compose_project()}_{key}"
 def volume_exists(key: str) -> bool:
+    # Late for the settings <-> dockerlib cycle documented in installed_instances().
+    # Without it this raised NameError, and so did every backup that asked.
+    from .dockerlib import _docker
     run = _docker("volume", "inspect", volume_name(key), timeout=15)
     return run is not None and run.returncode == 0
 # What a double-quoted .env value may escape, as compose reads it.
