@@ -323,6 +323,8 @@ PORT_OFFSETS = {
     "GRAFANA_PORT": 5,
     "PROMETHEUS_PORT": 6,
     "OPEN_WEBUI_PORT": 7,
+    "WORLDS_BOLT_PORT": 8,            # Bolt: Neo4j Browser and drivers, a world or the graph
+    "WORLDS_PERSISTED_BOLT_PORT": 9,  # Bolt: persisted mode, the user's own Cypher database
 }
 # Instance 24 would land on 11434, which is Ollama's — and the compose files
 # talk to Ollama there. A ceiling nobody will reach, stated so it cannot be hit

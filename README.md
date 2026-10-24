@@ -247,7 +247,9 @@ An appliance owns **sixteen consecutive ports**, `EMBABEL_PORT_BASE` + offset:
 | +5 | 11047 | grafana | dashboards over the metrics — off by default, `EMBABEL_MONITORING=on` |
 | +6 | 11048 | prometheus | scrapes and stores them, 15 days by default |
 | +7 | 11049 | open-webui | optional alternative chat front-end, off by default |
-| +8…+15 | 11050–11057 | — | spare, so the next service does not need a new block |
+| +8 | 11050 | worlds / assistant | Bolt: Neo4j Browser and the Neo4j drivers against a world, or the engine's graph |
+| +9 | 11051 | worlds / assistant | Bolt: persisted mode, your own Cypher database, read and write |
+| +10…+15 | 11052–11057 | — | spare, so the next service does not need a new block |
 | — | — | docling | PDF/DOCX/PPTX/XLSX → structured markdown, internal only |
 
 Everything binds to `127.0.0.1` — reachable from your machine, not from the network.
@@ -263,6 +265,7 @@ appliance talks to.
 |---|---|
 | assistant | the account you created during setup — see [Who can log in](#who-can-log-in) |
 | neo4j | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:11046` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is. If the browser remembers an *older* connect URL (it saves one per origin, and a stale one silently points you at a different database), open **<http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>** to force the right one, or run `:server disconnect` first |
+| Bolt (11050, 11051) | your appliance user name and password, or any user name with an API key (`emb_…`) as the password. In Neo4j Browser (the one on 11045 will do), connect to `bolt://localhost:11050`, then `:use world` for your world through Virtual Cypher or `:use graph` for the engine's graph (administrators). `bolt://localhost:11051` is persisted mode, your own Cypher database. Needs an image with the Bolt server |
 | open-webui | create an account on first visit; the first account is the admin |
 | grafana | no login — anyone who can reach 11047 is admin, which is safe only because it binds to `127.0.0.1` |
 | prometheus | no login |
@@ -405,6 +408,8 @@ world's `data/secrets.env`. Use `.env` for things the whole server needs.
 | `NEO4J_BROWSER_PORT` | `11045` |
 | `NEO4J_BOLT_PORT` | `11046` |
 | `OPEN_WEBUI_PORT` | `11049` |
+| `WORLDS_BOLT_PORT` | `11050` |
+| `WORLDS_PERSISTED_BOLT_PORT` | `11051` |
 | `GRAFANA_PORT` | `11047` |
 | `PROMETHEUS_PORT` | `11048` |
 
