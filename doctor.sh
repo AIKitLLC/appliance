@@ -112,7 +112,7 @@ if [ "$MEM" -gt 0 ]; then
   MEMGB=$((MEM / 1024 / 1024 / 1024))
   if [ "$MEMGB" -lt 5 ]; then
     warn "Docker has about ${MEMGB} GB of memory. Embabel needs about 5 GB to run comfortably." \
-         "Docker Desktop → Settings → Resources → Memory. If you cannot spare more, adding the line NEO4J_HEAP=1G to the .env file in your Embabel folder makes the database use half as much."
+         "Docker Desktop → Settings → Resources → Memory. If you cannot spare more and your .env file says GRAPH_TYPE=NEO4J, adding the line NEO4J_HEAP=1G to it makes the database use half as much."
   else
     ok "Docker has about ${MEMGB} GB of memory (about 5 GB is needed)."
   fi

@@ -23,9 +23,10 @@ from .dockerlib import _docker, graph_engine
 from .memory import describe, plan, resolve
 from .settings import monitoring_enabled
 
-# Measured on a working worlds appliance, idle: worlds 2.47 GiB, neo4j 2.09 GiB, console
-# 7.5 MiB. Rounded up, because a code sandbox is another container and nobody installs
-# this to leave it idle.
+# Measured on a working worlds appliance on Neo4j, idle: worlds 2.47 GiB, neo4j 2.09 GiB,
+# console 7.5 MiB. Not measured on the Embabel engine yet, so the same bar stands there.
+# Rounded up, because a code sandbox is another container and nobody installs this to
+# leave it idle.
 CORE_MEMORY_BYTES = 5 * 1024 ** 3
 
 # The core pull — assistant 1.71 GB, neo4j 1.09 GB, console 0.08 GB — plus the embedding
@@ -95,12 +96,15 @@ def capacity_notes() -> list[tuple[bool, str]]:
     memory, disk = have["memory"], have["disk"]
 
     if memory and memory < CORE_MEMORY_BYTES:
+        # The heap tip only where there is a Neo4j to shrink: on the Embabel engine the
+        # graph is in the app, and NEO4J_HEAP would be a line in .env that does nothing.
+        tip = ("\n    Less need:  NEO4J_HEAP=1G in .env runs the graph in half the memory."
+               if graph_engine() == "NEO4J" else "")
         notes.append((True,
             f"Docker has {gb(memory)} of memory. The appliance's core needs about "
             f"{gb(CORE_MEMORY_BYTES)} once it is running — measured on a working install, "
             f"not a specification, so this may still work.\n"
-            f"    More room:  Docker Desktop → Settings → Resources.\n"
-            f"    Less need:  NEO4J_HEAP=1G in .env runs the graph in half the memory."))
+            f"    More room:  Docker Desktop → Settings → Resources.{tip}"))
     elif memory:
         notes.append((False, f"Docker has {gb(memory)} of memory and {have['cpus']} CPU(s)."))
     if memory:
