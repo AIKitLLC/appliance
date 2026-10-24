@@ -49,8 +49,9 @@ def env_of(text):
     return found
 
 
-def pinned(env_text, *, creating, volumes=(), environ=None, graph_files="", neo4j_image=None):
-    """Run the pin against a scratch checkout. Returns (written, engine, .env after)."""
+def pinned(env_text, *, creating, volumes=(), environ=None, graph_files="", neo4j_image=None, server="sqlite"):
+    """Run the pin against a scratch checkout. Returns (written, engine, .env after).
+    `server` is the store the server image carries: sqlite, snapshot, or None if absent."""
     def docker(*argv, **_kwargs):
         if argv[:1] == ("run",):
             return subprocess.CompletedProcess(argv, 0, graph_files, "")
@@ -69,6 +70,7 @@ def pinned(env_text, *, creating, volumes=(), environ=None, graph_files="", neo4
                 patch.object(pins, "volume_exists", side_effect=lambda key: key in volumes), \
                 patch.object(dockerlib, "_docker", side_effect=docker), \
                 patch.object(dockerlib, "service_container", return_value="c" if neo4j_image else None), \
+                patch.object(pins, "_store_the_server_has", return_value=server), \
                 contextlib.redirect_stderr(io.StringIO()):
             settings.use_instance(settings.DEFAULT_INSTANCE)
             written = pins.pin_install(creating=creating)
@@ -122,12 +124,21 @@ written, _engine, _after = pinned(None, creating=False)
 check(not written, f"fresh instance, CLI entry: wrote {written} instead of leaving it to setup")
 
 # The Embabel engine's store is the one its volume holds; there is no migration between them.
-for files, store in (("graph.sqlite\nmemory.journal\n", "sqlite"), ("memory.journal\n", "snapshot"),
-                     ("memory.journal.snapshot\n", "snapshot"), ("", "sqlite")):
+# With a graph written, the file decides; with none, the server image does — a server without
+# the SQLite store journals whatever .env says, and a `sqlite` pin over that journal strands it.
+for files, server, store in (("graph.sqlite\nmemory.journal\n", "snapshot", "sqlite"),
+                             ("memory.journal\n", "sqlite", "snapshot"),
+                             ("memory.journal.snapshot\n", "sqlite", "snapshot"),
+                             ("", "sqlite", "sqlite"), ("", "snapshot", "snapshot"), ("", None, None)):
     written, _engine, _after = pinned("GRAPH_TYPE=MEMORY\n", creating=False, volumes=("embabel_assistant_data",),
-                                      graph_files=files)
-    check(written.get("VC_EMBABEL_STORE") == store, f"graph files {files!r}: store {written.get('VC_EMBABEL_STORE')!r}")
+                                      graph_files=files, server=server)
+    check(written.get("VC_EMBABEL_STORE") == store,
+          f"graph files {files!r}, server {server!r}: store {written.get('VC_EMBABEL_STORE')!r}, not {store!r}")
     check("GRAPH_TYPE" not in written, "GRAPH_TYPE=MEMORY was rewritten")
+# A new install is the same rule: the store its server image has, or nothing until it is here.
+for server in ("sqlite", "snapshot", None):
+    written, _engine, _after = pinned(None, creating=True, server=server)
+    check(written.get("VC_EMBABEL_STORE") == server, f"fresh install, server {server!r}: {written.get('VC_EMBABEL_STORE')!r}")
 
 # A line already there is the decision, whatever it says — empty included — and twice is once.
 for value in ("NEO4J", "EMBABEL", "MEMORY", "FALKORDB", ""):

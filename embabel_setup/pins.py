@@ -38,8 +38,8 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .settings import (
-    GRAPH_TYPE_VAR, UNPINNED_ENGINE, canonical_engine, env_file, env_file_assigns, env_file_value, env_path,
-    set_env_var, volume_exists, volume_name,
+    GRAPH_TYPE_VAR, UNPINNED_ENGINE, canonical_engine, configured_mode, env_file, env_file_assigns, env_file_value,
+    env_path, set_env_var, volume_exists, volume_name,
 )
 
 # The volumes whose presence says this instance has run before, whatever its .env says.
@@ -61,8 +61,9 @@ class Pin:
     # What an install that predates this row runs on. None: cannot tell on this run —
     # write nothing, and ask again next time.
     legacy: Callable[[], str | None]
-    # What a new install gets. The environment's value wins: that is a stated choice.
-    new: str
+    # What a new install gets — a value, or how to find one (None: not yet known). The
+    # environment's value wins: that is a stated choice.
+    new: str | Callable[[], str | None]
     why: str
 
 
@@ -81,26 +82,53 @@ def _constant(value: str) -> Callable[[], str]:
 
 
 def _embabel_store() -> str | None:
-    """Which store holds this install's Embabel graph, read off the data volume.
+    """Which store this install's Embabel graph is in, or should start in. None: not yet known.
 
-    The server's default store moved from its own journal file to SQLite, and an
-    install made under the first boots empty under the second: there is no migration
-    between them. So the file on the volume decides. Neither file means nothing has
-    been written yet, which is a new graph and gets the new store.
+    The data decides first. The server's default store moved from its own journal file
+    to SQLite, with no migration between them, so a graph already written is pinned to
+    the store that wrote it — SQLite's file, or the journal.
+
+    With nothing written yet, the SERVER decides, because the store has to be one the
+    image can open: a server without the SQLite store ignores the setting and journals,
+    and pinning `sqlite` over that journal would strand it on the upgrade that brings
+    SQLite. So: sqlite if the image carries the SQLite store, snapshot (which reads the
+    journal) if it does not, and None while the image is not here to ask — which is why
+    pin_before_start asks again, after the pull and before the first boot.
     """
-    if not volume_exists("embabel_assistant_data"):
-        return "sqlite"
-    # Late: backup imports this module, for restore. alpine, because backup already pins it.
-    from .backup import BACKUP_HELPER_IMAGE
+    if volume_exists("embabel_assistant_data"):
+        # Late: backup imports this module, for restore. alpine, because backup already pins it.
+        from .backup import BACKUP_HELPER_IMAGE
+        from .dockerlib import _docker
+        run = _docker("run", "--rm", "-v", f"{volume_name('embabel_assistant_data')}:/data:ro", BACKUP_HELPER_IMAGE,
+                      "sh", "-c", f"ls -a {os.path.dirname(EMBABEL_JOURNAL)} 2>/dev/null; true", timeout=120)
+        if run is None or run.returncode != 0:
+            return None
+        found = set(run.stdout.split())
+        if os.path.basename(EMBABEL_SQLITE) in found:
+            return "sqlite"
+        if any(name.startswith(os.path.basename(EMBABEL_JOURNAL)) for name in found):
+            return "snapshot"
+    return _store_the_server_has()
+
+
+# What tells a server that can keep its graph in SQLite: the SQLite driver, which arrived
+# in its jar with the store setting itself. Not the store module (graph-rdbms): builds
+# shipped that before the setting existed, ignored VC_EMBABEL_STORE, and journalled.
+SQLITE_STORE_MARKER = "BOOT-INF/lib/sqlite-jdbc-"
+
+
+def _store_the_server_has() -> str | None:
+    """sqlite if the image this install runs carries the SQLite store, else snapshot;
+    None if that image is not on this machine. Never pulls: this runs before setup has
+    said anything, and a gigabyte download is not a question."""
     from .dockerlib import _docker
-    run = _docker("run", "--rm", "-v", f"{volume_name('embabel_assistant_data')}:/data:ro", BACKUP_HELPER_IMAGE,
-                  "ls", "-a", os.path.dirname(EMBABEL_JOURNAL), timeout=120)
-    if run is None or run.returncode not in (0, 1):
+    from .versions import jar_holds, mode_image
+    image = mode_image(configured_mode() or "worlds")
+    present = _docker("image", "inspect", image, "--format", "{{.Id}}", timeout=15) if image else None
+    if not present or present.returncode != 0:
         return None
-    found = set(run.stdout.split())
-    if os.path.basename(EMBABEL_SQLITE) in found:
-        return "sqlite"
-    return "snapshot" if any(name.startswith(os.path.basename(EMBABEL_JOURNAL)) for name in found) else "sqlite"
+    held = jar_holds(image, False, SQLITE_STORE_MARKER)
+    return None if held is None else ("sqlite" if held else "snapshot")
 
 
 def _neo4j_version() -> str:
@@ -115,7 +143,7 @@ def _neo4j_version() -> str:
 PINS = (
     Pin(GRAPH_TYPE_VAR, _always, _constant(UNPINNED_ENGINE), "EMBABEL",
         "which graph holds the world; the engines do not share data, so moving is an empty world"),
-    Pin("VC_EMBABEL_STORE", _on("EMBABEL"), _embabel_store, "sqlite",
+    Pin("VC_EMBABEL_STORE", _on("EMBABEL"), _embabel_store, _embabel_store,
         "the Embabel engine's store; the default moved once already, with no migration between them"),
     Pin("VC_EMBABEL_JOURNAL", _on("EMBABEL"), _constant(EMBABEL_JOURNAL), EMBABEL_JOURNAL,
         "where the Embabel engine's journal is, on the data volume; elsewhere is a different graph"),
@@ -173,7 +201,8 @@ def pin_install(creating: bool) -> dict[str, str]:
             continue
         if fresh:
             stated = os.environ.get(pin.key, "").strip()
-            value = (canonical_engine(stated) if pin.key == GRAPH_TYPE_VAR else stated) or pin.new
+            value = (canonical_engine(stated) if pin.key == GRAPH_TYPE_VAR else stated) or (
+                pin.new() if callable(pin.new) else pin.new)
             note = "chosen when this appliance was created"
         else:
             value = pin.legacy()
@@ -186,3 +215,19 @@ def pin_install(creating: bool) -> dict[str, str]:
         # stderr: the Me app reads a verb's stdout as JSON, and this can come before any verb.
         print(f"  Pinned in {env_file()}: " + ", ".join(f"{k}={v}" for k, v in written.items()), file=sys.stderr)
     return written
+
+
+def pin_before_start(mode: str) -> None:
+    """The last chance to pin, right before compose creates the containers.
+
+    The one row that can still be open here is the Embabel engine's store on a new
+    install, which waits for the server image to say which store it has — and the image
+    may only just have arrived. Pulled here if it has not, because the `up` below would
+    pull it anyway, and booting before the store is pinned would let the fallback choose.
+    """
+    if (canonical_engine(env_file_value(GRAPH_TYPE_VAR)) == "EMBABEL"
+            and not env_file_assigns("VC_EMBABEL_STORE") and _store_the_server_has() is None):
+        from .core import MODE_SERVICE
+        from .dockerlib import _compose
+        _compose(mode, "pull", MODE_SERVICE[mode], capture=True)
+    pin_install(creating=False)

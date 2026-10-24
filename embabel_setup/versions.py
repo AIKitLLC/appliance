@@ -57,13 +57,13 @@ def _run_in(target: str, is_container: bool, *args: str, binary: bool = False):
                               text=not binary)
     except (subprocess.SubprocessError, FileNotFoundError, OSError):
         return None
-def _jar_entry(target: str, is_container: bool, entry: str) -> str | None:
-    """One file out of the jar, without moving the jar.
+def _jar_directory(target: str, is_container: bool) -> bytes | None:
+    """The jar's central directory — every entry's name and offset — without moving the jar.
 
-    Zip stores its index at the END, so the tail gives every entry's offset;
-    then a single seek reads that entry's bytes. Zip64 because the jar is well
-    past 4GB worth of entries' worth of offsets on some builds — the classic
-    end-of-central-directory records 0xFFFFFFFF and defers to the Zip64 one.
+    Zip stores its index at the END, so the tail gives the directory's offset; then a
+    single seek reads it. Zip64 because the jar is well past 4GB worth of entries' worth
+    of offsets on some builds — the classic end-of-central-directory records 0xFFFFFFFF
+    and defers to the Zip64 one.
     """
     tail = _run_in(target, is_container, "sh", "-c", f"tail -c 70000 {JAR_PATH}", binary=True)
     if not tail or tail.returncode != 0:
@@ -77,13 +77,29 @@ def _jar_entry(target: str, is_container: bool, entry: str) -> str | None:
         if offset == 0xFFFFFFFF:
             zip64 = data.rfind(b"PK\x06\x06")
             _size, offset = struct.unpack("<QQ", data[zip64 + 40:zip64 + 56])
+    except struct.error:
+        return None
+    block = 65536
+    got = _run_in(target, is_container, "dd", f"if={JAR_PATH}", f"bs={block}",
+                  f"skip={offset // block}", "status=none", binary=True)
+    if not got or got.returncode != 0:
+        return None
+    return got.stdout[offset % block:]
 
-        block = 65536
-        got = _run_in(target, is_container, "dd", f"if={JAR_PATH}", f"bs={block}",
-                      f"skip={offset // block}", "status=none", binary=True)
-        if not got or got.returncode != 0:
-            return None
-        directory = got.stdout[offset % block:]
+
+def jar_holds(target: str, is_container: bool, prefix: str) -> bool | None:
+    """Whether the server's jar has an entry starting with `prefix`; None if it cannot be read.
+    How a capability with no endpoint to ask is told apart: by the module that brings it."""
+    directory = _jar_directory(target, is_container)
+    return None if directory is None else prefix.encode() in directory
+
+
+def _jar_entry(target: str, is_container: bool, entry: str) -> str | None:
+    """One file out of the jar, found through its central directory, then a single seek."""
+    directory = _jar_directory(target, is_container)
+    if directory is None:
+        return None
+    try:
         at = directory.find(entry.encode())
         if at < 0:
             return None

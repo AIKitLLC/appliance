@@ -319,7 +319,8 @@ def cmd_open(args) -> int:
         bolt = urls.get("bolt")
         engine = {"EMBABEL": "the Embabel engine, inside the server", "FALKORDB": "FalkorDB"}.get(s.graph_engine())
         print(f"  This appliance's graph is {engine or s.graph_engine()}, which has no Neo4j Browser."
-              + (f"\n  Neo4j's tools connect to it over Bolt at {bolt}." if bolt else ""))
+              + (f"\n  Neo4j's tools connect to it over Bolt at {bolt}, on a server image with the Bolt server."
+                 if bolt else ""))
         return 1
     url = urls[what]
     print(f"  {url}")
