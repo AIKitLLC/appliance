@@ -39,7 +39,7 @@ repository — makes every existing thing more useful the moment it lands.
 
 **One `MATCH` that spans persisted and live data uniformly.**
 
-A normal knowledge-graph query reads what is stored in Neo4j. Virtual Cypher lets
+A normal knowledge-graph query reads what is stored in the graph. Virtual Cypher lets
 one query *also* reach data that is not in the graph — a HubSpot contact, a
 GitHub issue, a semantically related email thread — by fetching it on demand the
 moment the query reaches for it, splicing it in for the life of that one query,

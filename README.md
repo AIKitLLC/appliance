@@ -242,8 +242,8 @@ An appliance owns **sixteen consecutive ports**, `EMBABEL_PORT_BASE` + offset:
 | +0 | **11042** | assistant | **Me's front door** — web UI, REST API, tool gateway, MCP |
 | +1 | 11043 | worlds | the Worlds server: API and MCP, not a place to look |
 | +2 | **11044** | worlds-console | **Worlds' front door** |
-| +3 | 11045 | neo4j | the knowledge graph, browser |
-| +4 | 11046 | neo4j | the same, Bolt |
+| +3 | 11045 | neo4j | the knowledge graph, browser — on a Neo4j appliance; unused on the Embabel engine |
+| +4 | 11046 | neo4j | the same, Bolt — on a Neo4j appliance; unused on the Embabel engine |
 | +5 | 11047 | grafana | dashboards over the metrics — off by default, `EMBABEL_MONITORING=on` |
 | +6 | 11048 | prometheus | scrapes and stores them, 15 days by default |
 | +7 | 11049 | open-webui | optional alternative chat front-end, off by default |
@@ -264,13 +264,13 @@ appliance talks to.
 | Service | How |
 |---|---|
 | assistant | the account you created during setup — see [Who can log in](#who-can-log-in) |
-| neo4j | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:11046` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is. If the browser remembers an *older* connect URL (it saves one per origin, and a stale one silently points you at a different database), open **<http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>** to force the right one, or run `:server disconnect` first |
-| Bolt (11050, 11051) | your appliance user name and password, or any user name with an API key (`emb_…`) as the password. In Neo4j Browser (the one on 11045 will do), connect to `bolt://localhost:11050`, then `:use world` for your world through Virtual Cypher or `:use graph` for the engine's graph (administrators). `bolt://localhost:11051` is persisted mode, your own Cypher database. Needs an image with the Bolt server |
+| neo4j (a Neo4j appliance) | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:11046` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is. If the browser remembers an *older* connect URL (it saves one per origin, and a stale one silently points you at a different database), open **<http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>** to force the right one, or run `:server disconnect` first |
+| Bolt (11050, 11051) | your appliance user name and password, or any user name with an API key (`emb_…`) as the password. In Neo4j Browser (on a Neo4j appliance, the one on 11045 will do; an Embabel appliance has none of its own), connect to `bolt://localhost:11050`, then `:use world` for your world through Virtual Cypher or `:use graph` for the engine's graph (administrators). `bolt://localhost:11051` is persisted mode, your own Cypher database. Needs an image with the Bolt server |
 | open-webui | create an account on first visit; the first account is the admin |
 | grafana | no login — anyone who can reach 11047 is admin, which is safe only because it binds to `127.0.0.1` |
 | prometheus | no login |
 
-For scripted graph queries, use the shell inside the container — nothing to install:
+On a Neo4j appliance, scripted graph queries can use the shell inside the container — nothing to install:
 
 ```bash
 docker compose -f docker-compose-worlds.yml exec neo4j cypher-shell -u neo4j -p embabel-assistant
@@ -347,7 +347,7 @@ If you cannot run it, set `ASSISTANT_EMBEDDING_MODEL=text-embedding-3-small` in 
 to embed via OpenAI instead, and remove the `models:` element from the compose file.
 
 **Switching embedding models on an existing install is a migration.** Stored vectors
-were produced by the previous model and the Neo4j vector indexes are dimension-bound,
+were produced by the previous model and the graph's vector indexes are dimension-bound,
 so after changing `ASSISTANT_EMBEDDING_MODEL` run the re-embed from *Settings →
 Embedding model*. Until then, search results will be inconsistent.
 
@@ -463,7 +463,8 @@ panel edits in the UI won't persist across a restart. Prometheus scrapes
 | `JDK_JAVA_OPTIONS` | `-XX:+ExitOnOutOfMemoryError` | An app out of heap exits so Docker restarts it, instead of staying up and answering nothing. Kept apart from `JAVA_OPTS` so overriding that does not drop it. |
 | `APP_WATCHDOG_FAILURES` | `5` | Health checks in a row (15 s apart) with no answer at all before the app is restarted. Only a process that has answered once counts, and an HTTP error such as the graph being down does not, so a slow start or a missing dependency never triggers it. `0` turns it off. |
 | `APP_MEM_LIMIT` · `NEO4J_MEM_LIMIT` · `DOCLING_MEM_LIMIT` | sized from Docker's memory | Container memory limits. `embabel up` splits what Docker has between the app, the graph and docling (`embabel doctor` prints the split); set one to override it. |
-| `NEO4J_PASSWORD` | `embabel-assistant` | Change before the appliance is anything but local. |
+| `NEO4J_PASSWORD` | `embabel-assistant` | Neo4j appliances. Neo4j keeps it in its volume, so it is pinned in `.env`; changing it there alone locks the server out of the graph — change it in Neo4j too. |
+| `NEO4J_VERSION` | the one the appliance was created with, pinned in `.env` | Neo4j appliances. The Neo4j that writes the graph's files; a newer one migrates them, an older one cannot read them. |
 | `DOCLING_WORKERS` | derived from `DOCLING_MEM_LIMIT` | Docling's worker count, and how many docling requests the app keeps in flight. One per 3.5 GiB of docling's limit, at least one: each worker loads its own models. |
 | `NEO4J_HEAP` · `NEO4J_PAGECACHE` | derived from `NEO4J_MEM_LIMIT` | Neo4j's heap and page cache. Set by hand, they are kept and the limit grows to hold them. |
 | `TZ` | your host's zone (written by `setup.py`; `Etc/UTC` if undetectable) | The containers' — and so the assistant's — clock. Set it yourself only to override the detected zone (IANA name, e.g. `Australia/Sydney`). |
@@ -574,24 +575,47 @@ transmission that will not happen is worse than silence.
 
 ## Your data
 
-Two Docker volumes hold everything that matters:
+### Which graph engine
+
+A new appliance runs the **Embabel engine**: the graph is inside the server, kept in one
+SQLite file on the data volume (`/data/graph/graph.sqlite`), with no graph container —
+nothing on 11045 or 11046, and no Neo4j to size or back up separately. An appliance
+installed before that runs **Neo4j**, and keeps it.
+
+Setup writes the choice into `.env` when it creates the appliance (`GRAPH_TYPE=EMBABEL`;
+export `GRAPH_TYPE=NEO4J` before installing to choose Neo4j), and every `embabel` verb
+writes `GRAPH_TYPE=NEO4J` into an older appliance's `.env` the first time it runs. That
+is deliberate: **the engines do not share data**, so an appliance that moved engine would
+open on an empty world behind a login that still works. Switching by hand is choosing a
+different, empty graph; switch back and the old one is still there. `MEMORY`, the
+engine's old name, still means `EMBABEL`.
+
+The engine is one of a handful of defaults with data or a provider behind them, and each
+is written into `.env` the same way, so that no later release can move an appliance off
+what it runs on: the Embabel engine's store and its file paths, the Neo4j version and
+password, the embedding model, the document converter, the Ollama, LM Studio and Model
+Runner addresses, and whether monitoring runs. Each line carries a comment saying why;
+[`embabel_setup/pins.py`](embabel_setup/pins.py) holds the table. Edit a line to change
+it — nothing rewrites a line that is there.
+
+### The volumes
 
 | Volume | Contents |
 |---|---|
-| `embabel_assistant_data` | worlds — your configuration, documents, artifacts, apps |
-| `embabel_appliance_neo4j_data` | the knowledge graph |
+| `embabel_assistant_data` | worlds — your configuration, documents, artifacts, apps — and, on the Embabel engine, the graph |
+| `embabel_appliance_neo4j_data` | the knowledge graph, on a Neo4j appliance |
 
-`docker compose down` keeps both. `docker compose down -v` destroys both. To back up:
+`docker compose down` keeps them. `docker compose down -v` destroys them. To back up:
 
 ```bash
-embabel backup            # both volumes, plus .env and secrets.env, to ~/embabel-backups
+embabel backup            # the volumes your engine uses, plus .env and secrets.env, to ~/embabel-backups
 embabel backup --list     # what is already there
 embabel restore <folder>  # put one back, replacing what is here
 ```
 
 The copy is cold — the appliance stops for it and starts again afterwards —
-because Community Neo4j has no online backup and a graph copied live restores
-as a corrupt graph. See [CLI.md](CLI.md) for what a backup folder holds and what
+because a graph copied live restores as a corrupt graph: Community Neo4j has no
+online backup, and a SQLite file caught mid-write is torn the same way. See [CLI.md](CLI.md) for what a backup folder holds and what
 a restore replaces.
 
 Three more volumes hold state you can throw away — `embabel_appliance_open_webui_data`,
@@ -671,7 +695,7 @@ embabel upgrade           # checkout, then images, then verify
 ```
 
 Both halves. The images are most of the appliance, but the checkout is the rest
-of it — the compose files, the Neo4j tag they pin, `setup.py`, the skills — and
+of it — the compose files, `setup.py`, the skills — and
 pulling one without the other runs new servers against old plumbing.
 
 The checkout pull is `--ff-only`, always: local changes are reported and left
@@ -697,12 +721,12 @@ The commands below act on the default appliance. For another instance, run each
 | `setup.py` cannot find the token | It already waits out a booting app, so the running container's log truly lacks one. `embabel compose restart assistant` (or `worlds`) — the token is printed afresh on every boot until setup completes |
 | `setup.py` reports 410 Gone | This appliance is already set up — just sign in |
 | Login rejects the account you created | Setup was not completed; re-run `./setup.py` |
-| Neo4j browser won't connect or log in | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:11046` (pre-filled; 7687 is not published to the host) |
+| Neo4j browser won't connect or log in (Neo4j appliance) | The user is `neo4j` — `embabel-assistant` is the default *password*. And the connect URL must be `neo4j://localhost:11046` (pre-filled; 7687 is not published to the host) |
 | Neo4j browser connects, but shows unfamiliar data | It reconnected to a *saved* URL from an earlier session — another Neo4j on the host, not the appliance's. `:server disconnect`, then reconnect at `neo4j://localhost:11046`, or open <http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>. Confirm with `docker compose exec neo4j cypher-shell -u neo4j -p embabel-assistant "MATCH (n) RETURN count(n)"` — that shell can only ever reach the appliance's graph |
 | Login page loads but chat never answers | No provider key took effect. The appliance restarts once at the end of setup for exactly this reason — check it came back with `docker compose ps` |
 | `docker compose up` fails on an image pull | Not authenticated to ghcr.io — see [Registry access](#registry-access) |
 | First code-execution turn hangs for minutes | The sandbox image is still downloading. `docker pull embabel/assistant-sandbox:latest` |
-| `assistant` restarts during boot | Neo4j isn't healthy yet; it settles on its own. `docker compose logs neo4j` |
+| `assistant` restarts during boot | On a Neo4j appliance, Neo4j isn't healthy yet; it settles on its own. `docker compose logs neo4j` |
 | Uploading a PDF fails | docling isn't up. `docker compose ps`, or set `ASSISTANT_DOC_CONVERTER=none` |
 | An MCP client gets 401 | `EMBABEL_MCP_API_TOKEN` is empty, or the client's header doesn't match it |
 | Nothing on 11047 | Monitoring is off by default: `EMBABEL_MONITORING=on` in `.env`, then `embabel up`. If it is on, `docker compose ps` — if `grafana` isn't listed, it failed to pull. The image ships at the same `EMBABEL_VERSION` as the assistant |

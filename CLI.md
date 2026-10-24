@@ -155,10 +155,10 @@ two installs. There is no single number, and printing one would be a lie:
 
 | | |
 |---|---|
-| **Checkout** | this repo's commit — the pin for everything in files rather than images: the compose files, the Neo4j tag they name, `setup.py`, the skills |
+| **Checkout** | this repo's commit — the pin for everything in files rather than images: the compose files, `setup.py`, the skills |
 | **Server** | the image **tag** as compose resolves it, and the **digest** that tag currently means. `EMBABEL_VERSION` defaults to a snapshot tag, so the tag is a name; the digest is the artifact |
 | **Built from** | the commit the server's jar was built from, read out of `git.properties` inside it — with the branch, the subject line, and whether the build carried **uncommitted changes** |
-| **Graph** | the Neo4j image and its digest |
+| **Graph** | the Neo4j image and its digest — or, on the Embabel engine, that the graph is inside the server, whose version is its version |
 
 A build from a dirty tree says so, loudly, because its commit names where the
 build *started* rather than what is in it. A build old enough to carry only an
@@ -574,7 +574,7 @@ it.
 ### `embabel backup [directory]`
 
 Everything the appliance knows, copied to a folder on the host: a cold tarball
-of each of the two volumes, this machine's `.env`, `secrets.env` and mounts
+of each volume the appliance's graph engine keeps data in (the data volume, and Neo4j's on a Neo4j appliance), this machine's `.env`, `secrets.env` and mounts
 override, and a manifest recording when it was taken, from which images, at
 which checkout commit.
 
@@ -585,8 +585,9 @@ folder, so backing up twice never overwrites the first one.
 
 **The copy is cold.** Whichever mode is running stops for it and starts again
 afterwards — including on a failure, so a backup that goes wrong is never the
-reason your assistant is down. This is not caution: Community Neo4j has no
-online backup, and a graph copied while it is live restores as a corrupt graph.
+reason your assistant is down. This is not caution: a graph copied while it is
+live restores as a corrupt graph — Community Neo4j has no online backup, and the
+Embabel engine's SQLite file is torn the same way mid-write.
 
 The volume bytes never cross a bind mount — a helper container tars them to
 stdout and the CLI streams that to the file — so Docker Desktop's file-sharing

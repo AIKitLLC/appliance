@@ -90,5 +90,6 @@ The questions worth asking, and the honest answers:
   and embeddings are already local. Quality becomes a function of your hardware.
 - *Can we audit it?* The appliance is public, the usage payload is inspectable live from
   your own instance, and every agent run is inspectable after the fact.
-- *What happens if Embabel disappears?* The graph is Neo4j, the realms are your git
+- *What happens if Embabel disappears?* The graph is a SQLite file on your own disk (Neo4j,
+  on an appliance installed before that was the default), the realms are your git
   repositories, and the images are already on your disk.

@@ -83,7 +83,7 @@ crash-looping, copy the log out before anyone runs `docker compose up` again.
 | Console stuck on "Connecting to Worlds" | `docker logs --tail 30 $P-worlds-console-1` — read the status of the repeating `/api/v1/realms` lines |
 | Wizard: "did not answer … still waiting for OpenAI" | `docker exec $P-worlds-1 sh -c 'curl -s -o /dev/null -w "%{http_code}\n" --max-time 20 https://api.openai.com/v1/models'` |
 | `Bearer token resolved to user 'x' but the user could not be loaded` | Compare the token's user against the credential store — see below |
-| Neo4j errors in the log | `docker inspect -f '{{.State.Status}} restarts={{.RestartCount}}' $P-neo4j-1` |
+| Neo4j errors in the log (a Neo4j appliance; `embabel version` says which engine) | `docker inspect -f '{{.State.Status}} restarts={{.RestartCount}}' $P-neo4j-1` |
 
 ## The failures that have actually happened, and what each one really is
 
@@ -94,7 +94,7 @@ pulls of public images, which all of Embabel's are. Fix: put Docker Desktop's bi
 PATH (`/Applications/Docker.app/Contents/Resources/bin`), or remove the `credsStore` line from
 the config. Not a network problem, not a permissions problem.
 
-**A memory-starved appliance looks like a network problem.** Neo4j at its default 2 GB heap in
+**A memory-starved appliance looks like a network problem.** On a Neo4j appliance, Neo4j at its default 2 GB heap in
 a container smaller than that refuses to start — `Invalid memory configuration - exceeds
 physical memory` — and crash-loops. **`OOMKilled` stays `false`**, so do not read that flag as
 the verdict; `RestartCount` is the tell. `NEO4J_HEAP=1G` in `.env` is a tested fix. The
