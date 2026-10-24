@@ -210,6 +210,18 @@ for mode in ("worlds", "me"):
         check(dockerlib.graph_overlay_file(mode) is None, f"{mode}: Neo4j has an overlay")
         check("neo4j" in dockerlib.core_services(mode), f"{mode} on NEO4J does not start neo4j")
 
+# What is offered to a person follows the engine: no Neo4j Browser link, and no graph lamp
+# waiting on a container, where there is no Neo4j.
+with patch.dict(os.environ, {"GRAPH_TYPE": "EMBABEL"}):
+    urls = settings.surface_urls()
+    check("graph" not in urls, f"an Embabel appliance offers Neo4j Browser: {urls.get('graph')}")
+    check(urls.get("bolt", "").endswith(str(settings.ports_for(settings.port_base())["WORLDS_BOLT_PORT"])),
+          f"an Embabel appliance's Bolt is not the server's: {urls.get('bolt')}")
+    with patch.object(dockerlib, "service_container", side_effect=AssertionError("asked docker")):
+        check(dockerlib.find_graph_container() is None, "an Embabel appliance looked for a graph container")
+with patch.dict(os.environ, {"GRAPH_TYPE": "NEO4J"}):
+    check("graph" in settings.surface_urls(), "a Neo4j appliance lost its Neo4j Browser link")
+
 # ── backup and restore ───────────────────────────────────────────────────────
 
 def backed_up(engine, volumes):

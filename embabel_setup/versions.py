@@ -220,6 +220,9 @@ def appliance_versions(mode: str | None = None) -> dict:
         "checkout": checkout_identity(),
         "appliance": image_identity(image) if image else {},
         "source": source_identity(mode),
+        # Which engine holds the graph is part of what an install IS: two appliances on
+        # the same image and different engines hold different data.
+        "engine": graph_engine(),
         "neo4j": image_identity(neo4j_image() or ""),
     }
 def neo4j_image() -> str | None:

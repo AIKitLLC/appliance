@@ -301,6 +301,13 @@ def cmd_open(args) -> int:
     if what == "dashboards" and not s.monitoring_enabled():
         print(f"  Dashboards are off. Set EMBABEL_MONITORING=on in .env, then run `{embabel_command('up')}`.")
         return 1
+    if what not in urls:
+        # Only `graph`, which is Neo4j Browser: nothing to open on an engine without Neo4j.
+        bolt = urls.get("bolt")
+        engine = {"EMBABEL": "the Embabel engine, inside the server", "FALKORDB": "FalkorDB"}.get(s.graph_engine())
+        print(f"  This appliance's graph is {engine or s.graph_engine()}, which has no Neo4j Browser."
+              + (f"\n  Neo4j's tools connect to it over Bolt at {bolt}." if bolt else ""))
+        return 1
     url = urls[what]
     print(f"  {url}")
     # The URL is printed FIRST and unconditionally: on a headless box, or over ssh,

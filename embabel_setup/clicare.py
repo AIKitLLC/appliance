@@ -158,6 +158,10 @@ def cmd_version(args) -> int:
         print(f"\n  Graph       {neo['image']}")
         if neo.get("digest"):
             print(f"              {neo['digest']}")
+    elif v.get("engine") == "EMBABEL":
+        print("\n  Graph       the Embabel engine, inside the server — its version is the server's")
+    elif v.get("engine"):
+        print(f"\n  Graph       {v['engine']}")
     print()
     return 0
 

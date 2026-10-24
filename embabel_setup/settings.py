@@ -40,15 +40,23 @@ def api_address(base: str) -> str:
 
 
 def surface_urls() -> dict:
-    """Every address this instance publishes, by the name a person uses for it."""
+    """Every address this instance publishes, by the name a person uses for it.
+
+    `graph` is Neo4j Browser, so only an appliance that runs Neo4j has one. On the
+    Embabel engine the graph is inside the server and there is no browser to open;
+    `bolt` is then the server's own Bolt port, which Neo4j's tools connect to."""
     p = ports_for(port_base())
-    return {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
+    urls = {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
             "worlds": f"http://localhost:{p['WORLDS_PORT']}",
             "console": console_url(),
-            "graph": f"http://localhost:{p['NEO4J_BROWSER_PORT']}",
-            "bolt": f"bolt://localhost:{p['NEO4J_BOLT_PORT']}",
             "dashboards": f"http://localhost:{p['GRAFANA_PORT']}",
             "metrics": f"http://localhost:{p['PROMETHEUS_PORT']}"}
+    if graph_engine() == "NEO4J":
+        urls["graph"] = f"http://localhost:{p['NEO4J_BROWSER_PORT']}"
+        urls["bolt"] = f"bolt://localhost:{p['NEO4J_BOLT_PORT']}"
+    elif graph_engine() == "EMBABEL":
+        urls["bolt"] = f"bolt://localhost:{p['WORLDS_BOLT_PORT']}"
+    return urls
 # Machine-local configuration: keys, timezone, world template, realms directory.
 # Gitignored, and removed by --uninstall — which is the difference between that
 # and --fresh, since a .env that survives means the next run asks nothing.
