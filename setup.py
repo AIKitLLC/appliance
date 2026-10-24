@@ -209,6 +209,10 @@ def main() -> int:
     # Before compose is invoked for anything: a new instance without a block
     # would fall back to the default base and collide with the first appliance.
     if not args.uninstall:
+        # FIRST, while "is there a .env yet" still means "has this instance been
+        # created": the line below writes one. A new instance gets the Embabel engine,
+        # one that already exists keeps the Neo4j it has been running.
+        pin_graph_engine(creating=True)
         ensure_port_block()
 
     # Line-buffered even when stdout is a pipe. Subprocesses (compose, docker logs)

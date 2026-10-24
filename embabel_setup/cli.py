@@ -123,16 +123,31 @@ def resolve_instance(args) -> int:
     names = s.installed_instances()
     if asked:
         s.use_instance(asked)
-        return 0
+        return _pinned(args)
     if len(names) == 1:
         s.use_instance(names[0])
-        return 0
+        return _pinned(args)
     if len(names) > 1 and args.command not in ("instances", "where", "completion", None):
         print(f"\n  {len(names)} appliances are installed here: {', '.join(names)}", file=sys.stderr)
         print("  Say which one:  embabel --instance <name> " + (args.command or ""), file=sys.stderr)
         print("  Or set EMBABEL_INSTANCE in your shell.\n", file=sys.stderr)
         return 2
     s.use_instance(s.DEFAULT_INSTANCE)
+    return 0
+
+
+def _pinned(args) -> int:
+    """Pin the chosen instance's graph engine, if it predates the pin.
+
+    HERE because every verb comes through here, and an install made before the engine
+    was written down must be pinned before anything starts its containers — `upgrade`
+    and `up` above all, but the first verb of a new CLI is the earliest moment there is.
+    Only ever pins an install that exists (see pin_graph_engine); choosing for a new
+    one is setup's. Not for the verbs that describe the command rather than an
+    appliance, which have no business writing anybody's settings.
+    """
+    if args.command not in ("instances", "where", "completion"):
+        s.pin_graph_engine(creating=False)
     return 0
 
 

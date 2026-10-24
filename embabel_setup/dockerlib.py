@@ -23,8 +23,8 @@ from .core import (
 )
 from .memory import memory_env
 from .settings import (
-    compose_project, configured_mode, embabel_command, env_file_value, env_path, instance, monitoring_enabled,
-    phone_home_on, port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
+    compose_project, configured_mode, embabel_command, env_file_value, env_path, graph_engine, instance,
+    monitoring_enabled, phone_home_on, port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
 )
 
 # Everything else, started AFTER the mode is up and reachable. None of it is a
@@ -305,19 +305,13 @@ def refresh_floating_images(mode: str, services: tuple[str, ...] | list[str]) ->
         print("  " + dim("    Starting on the images already here."))
 
 
-def graph_engine() -> str:
-    """The engine this appliance runs — GRAPH_TYPE in .env; NEO4J when unset."""
-    chosen = os.environ.get("GRAPH_TYPE") or env_file_value("GRAPH_TYPE")
-    return (chosen or "NEO4J").strip().upper()
-
-
 def graph_overlay_file(mode: str) -> str | None:
     """The engine overlay for this mode, or None for the default engine.
     One file per mode per engine — see the note in the files."""
     engine = graph_engine()
     if engine == "FALKORDB":
         return f"graph-falkordb-{mode}.yml"
-    if engine == "MEMORY":
+    if engine == "EMBABEL":
         return f"graph-memory-{mode}.yml"
     return None
 

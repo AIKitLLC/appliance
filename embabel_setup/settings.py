@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import re
+import sys
 
 from .core import APPLIANCE_DIR, MODE_COMPOSE, SetupError
 
@@ -422,6 +423,77 @@ def ensure_port_block() -> int:
     if instance() != DEFAULT_INSTANCE or base != DEFAULT_PORT_BASE:
         print(f"  Instance '{instance()}' uses ports {base}-{base + PORT_BLOCK - 1}.")
     return base
+# THE GRAPH ENGINE IS DECIDED ONCE, AT CREATION, and written down. New installs run the
+# Embabel engine: the graph inside the server, kept in a SQLite file on the data volume
+# beside the worlds, with no graph container. Every install from before that choice runs
+# Neo4j, and must stay on it — the engines do not share data, so moving one would be an
+# empty world behind a working login. Neither may rest on a default, because a default is
+# the one thing an upgrade changes: the compose files keep NEO4J as theirs precisely so an
+# existing install upgraded by an older CLI, which runs against the new files, cannot move.
+GRAPH_TYPE_VAR = "GRAPH_TYPE"
+NEW_INSTALL_ENGINE = "EMBABEL"
+UNPINNED_ENGINE = "NEO4J"
+# The Embabel engine was called MEMORY before it had a name of its own. The server still
+# accepts that spelling, and so does every reader here, so no .env has to be edited.
+ENGINE_ALIASES = {"MEMORY": "EMBABEL"}
+# The volumes whose presence says this instance has run before, whatever its .env says.
+INSTALL_VOLUMES = ("embabel_assistant_data", "embabel_appliance_neo4j_data")
+
+
+def canonical_engine(value: str | None) -> str | None:
+    """An engine name as the server reads it, the old spelling folded in; None for blank."""
+    value = (value or "").strip().upper()
+    return ENGINE_ALIASES.get(value, value) or None
+
+
+def graph_engine() -> str:
+    """The engine this appliance runs — GRAPH_TYPE from the environment or .env, and
+    NEO4J when neither says, which is what compose falls back to as well."""
+    return canonical_engine(os.environ.get(GRAPH_TYPE_VAR) or env_file_value(GRAPH_TYPE_VAR)) or UNPINNED_ENGINE
+
+
+def pin_graph_engine(creating: bool) -> str | None:
+    """Write this instance's engine into .env if it has none yet. Returns what was written.
+
+    An instance that exists — its .env is there, or its volumes are — is pinned to
+    NEO4J, because that is what it has been running: nothing ever wrote GRAPH_TYPE
+    for it, so the compose default chose. A GRAPH_TYPE exported in the shell does not
+    change that: it still wins for the runs it is exported in, as it always did, and
+    is not mistaken for a decision about the data.
+
+    A NEW instance is the only one that gets a choice, and only from setup
+    (`creating`), before ensure_port_block writes the first line of its .env: the
+    environment's GRAPH_TYPE if one was given, the Embabel engine otherwise. Every
+    other entry passes creating=False and only ever pins, so a status, a doctor or
+    the Me app polling an install pins it on the first run of a CLI that knows to,
+    and none of them ever creates a .env.
+
+    Docker that cannot answer reads as no volumes. The one install that misjudges is
+    one whose .env was deleted while its volumes were kept, on a run where Docker is
+    down — and the server refuses to start a stamped world on a store it was not
+    made in, so that is a loud failure rather than a quiet empty world.
+    """
+    if env_file_value(GRAPH_TYPE_VAR):
+        return None
+    exists = os.path.exists(env_path())
+    if not exists and not creating:
+        return None
+    if exists or any(volume_exists(key) for key in INSTALL_VOLUMES):
+        engine, why = UNPINNED_ENGINE, (
+            "# The graph engine. Pinned because this appliance was installed when Neo4j",
+            "# was the default: its graph is in Neo4j, and the engines do not share data.",
+        )
+    else:
+        engine, why = canonical_engine(os.environ.get(GRAPH_TYPE_VAR)) or NEW_INSTALL_ENGINE, (
+            "# The graph engine, chosen when this appliance was created. The engines do",
+            "# not share data, so changing it is choosing a different, empty graph.",
+        )
+    set_env_var(GRAPH_TYPE_VAR, engine, why)
+    # stderr: the Me app reads a verb's stdout as JSON, and this can be the first line of any verb.
+    print(f"  Graph engine: {engine}, written to {env_file()}.", file=sys.stderr)
+    return engine
+
+
 def _docker_port_bases() -> set[int]:
     """Port blocks owned by appliance containers, including other checkouts."""
     # Late for the settings <-> dockerlib cycle documented in installed_instances().
