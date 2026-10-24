@@ -151,10 +151,11 @@ def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
         with open(env_path()) as f:
             lines = f.read().splitlines()
     written = escape_for_env(value)
-    for index, line in enumerate(lines):
-        if line.startswith(f"{key}="):
-            lines[index] = f"{key}={written}"
-            break
+    # The LAST assignment is replaced, found by the reader's rules: that is the one
+    # compose acts on, and `KEY = value` or `export KEY=` is the same key to it.
+    found = [i for i, line in enumerate(lines) if (_dotenv_assignment(line) or ("",))[0] == key]
+    if found:
+        lines[found[-1]] = f"{key}={written}"
     else:
         lines += ["", *why, f"{key}={written}"]
     with open(env_path(), "w") as f:
@@ -505,18 +506,68 @@ def volume_name(key: str) -> str:
 def volume_exists(key: str) -> bool:
     run = _docker("volume", "inspect", volume_name(key), timeout=15)
     return run is not None and run.returncode == 0
+# What a double-quoted .env value may escape, as compose reads it.
+_DOTENV_ESCAPES = {"n": "\n", "r": "\r", "t": "\t", "\\": "\\", '"': '"', "$": "$"}
+
+
+def _dotenv_assignment(line: str) -> tuple[str, str] | None:
+    """One .env line as compose reads it: (key, value), or None for anything else.
+
+    THE SAME RULES AS COMPOSE, because the two read the same file and a value they
+    disagree on is a value the appliance acts on and the container never sees — or
+    the reverse. `GRAPH_TYPE=NEO4J   # pinned` is NEO4J to compose, and was the whole
+    tail, comment included, to a reader that only split on `=`: an engine name
+    matching nothing. So: `export ` is optional, whitespace around the key and before
+    the value is not part of either, a quoted value ends at its closing quote, and an
+    unquoted one ends where a `#` follows whitespace. `$$` is an escaped dollar
+    everywhere except inside single quotes, which compose does not interpolate.
+
+    Hand-written rather than a library because the installer is standard library
+    only, and the format is small and fixed by compose. Multi-line quoted values are
+    not read; nothing the appliance writes or reads is one.
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export "):].lstrip()
+    key, eq, rest = stripped.partition("=")
+    key = key.strip()
+    if not eq or not key:
+        return None
+    rest = rest.lstrip(" \t")
+    if rest[:1] == "'":
+        end = rest.find("'", 1)
+        return key, rest[1:end] if end > 0 else rest[1:]
+    if rest[:1] == '"':
+        out, i = [], 1
+        while i < len(rest) and rest[i] != '"':
+            if rest[i] == "\\" and i + 1 < len(rest):
+                i += 1
+                out.append(_DOTENV_ESCAPES.get(rest[i], "\\" + rest[i]))
+            else:
+                out.append(rest[i])
+            i += 1
+        return key, "".join(out).replace("$$", "$")
+    comment = re.search(r"\s#", rest)
+    if comment:
+        rest = rest[:comment.start()]
+    return key, rest.strip().replace("$$", "$")
+
+
 def _env_file_value(path: str, key: str) -> str | None:
+    """The value compose would read for `key`, unescaped — what was stored is a
+    doubled-dollar form for compose's benefit, not the value itself. The LAST
+    assignment wins, as it does for compose."""
     if not os.path.exists(path):
         return None
+    found = None
     with open(path) as f:
         for line in f:
-            stripped = line.strip()
-            if stripped.startswith(f"{key}="):
-                # Unescaped on the way out: what was stored is a doubled-dollar
-                # form for compose's benefit, not the value itself.
-                raw = stripped.split("=", 1)[1].strip()
-                return raw.replace("$$", "$") or None
-    return None
+            parsed = _dotenv_assignment(line)
+            if parsed and parsed[0] == key:
+                found = parsed[1] or None
+    return found
 
 
 def env_file_value(key: str, name: str | None = None) -> str | None:
