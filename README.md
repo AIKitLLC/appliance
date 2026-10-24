@@ -577,9 +577,12 @@ transmission that will not happen is worse than silence.
 
 ### Which graph engine
 
-A new appliance runs the **Embabel engine**: the graph is inside the server, kept in one
-SQLite file on the data volume (`/data/graph/graph.sqlite`), with no graph container —
-nothing on 11045 or 11046, and no Neo4j to size or back up separately. An appliance
+A new appliance runs the **Embabel engine**: the graph is inside the server, kept on the
+data volume, with no graph container — nothing on 11045 or 11046, and no Neo4j to size or
+back up separately. Its store is one SQLite file, `/data/graph/graph.sqlite`, on a server
+image that has the SQLite store; on one that does not yet, it is the engine's journal
+beside it, and `.env` records which, so the upgrade that brings SQLite keeps the graph
+where it is. An appliance
 installed before that runs **Neo4j**, and keeps it.
 
 Setup writes the choice into `.env` when it creates the appliance (`GRAPH_TYPE=EMBABEL`;
