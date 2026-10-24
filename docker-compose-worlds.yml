@@ -67,6 +67,13 @@ services:
       # Same host-equals-container port rule as the Me mode: the code sandbox is
       # handed host.docker.internal:${server.port}, so the two move together.
       - "127.0.0.1:${WORLDS_PORT:-11043}:${WORLDS_PORT:-11043}"
+      # Bolt, the Neo4j wire protocol, for Neo4j Browser, the drivers and the graph tools
+      # built on them. The server speaks it on 7687 (a world through Virtual Cypher, or
+      # the engine's graph for an administrator) and 7688 (persisted mode: your own
+      # Cypher database, read and write). Host and container ports differ, unlike the
+      # HTTP port above: nothing hands a Bolt URL to a sibling container.
+      - "127.0.0.1:${WORLDS_BOLT_PORT:-11050}:7687"
+      - "127.0.0.1:${WORLDS_PERSISTED_BOLT_PORT:-11051}:7688"
     # Realm credentials, without a compose edit per realm. A realm names the key it
     # needs (`token-env:` in its apis.yml) and you put that key in secrets.env, beside
     # this file — every line of it enters the container as-is. The alternative was a
@@ -78,6 +85,8 @@ services:
         required: false
     environment:
       - SERVER_PORT=${WORLDS_PORT:-11043}
+      # What a `neo4j://` client is told to reconnect to: the host's port, not the container's.
+      - GRAPH_BOLT_ADVERTISED_ADDRESS=localhost:${WORLDS_BOLT_PORT:-11050}
       # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
       # guides.json from the repository this checkout follows and indexes what is new
       # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
