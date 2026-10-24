@@ -2,9 +2,9 @@
 // own disk and brought back from it.
 //
 // WHAT A BACKUP IS. The appliance keeps everything a user would cry about in
-// two named volumes — embabel_assistant_data (worlds, documents, artifacts,
-// credentials) and embabel_appliance_neo4j_data (the knowledge graph) — plus
-// the host-side files that make the checkout THIS appliance: .env, secrets.env
+// named volumes — embabel_assistant_data (worlds, documents, artifacts,
+// credentials, and on the Embabel engine the graph too) and, on an engine with a
+// graph container, that container's volume — plus the host-side files that make the checkout THIS appliance: .env, secrets.env
 // and the mounts override. A backup is a plain folder holding a cold tarball
 // of each volume, those files, and a manifest saying what made it.
 //
@@ -25,9 +25,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import * as mounts from './mounts'
 
-/* The volume tarballs a backup must contain, by filename. setup.py decides
- * what goes IN them; this only needs to know a folder is complete. */
-const VOLUME_FILES = ['assistant-data.tgz', 'neo4j-data.tgz']
+/* The volume tarballs a backup from before the manifest named them holds — Neo4j's,
+ * the only engine anybody backed up then. A newer manifest lists its own under
+ * `volumes`, because which volumes there are is the engine's answer; setup.py
+ * decides what goes IN them, and this only needs to know a folder is complete. */
+const LEGACY_VOLUME_FILES = ['assistant-data.tgz', 'neo4j-data.tgz']
 
 const MANIFEST = 'manifest.json'
 
@@ -98,9 +100,10 @@ function inspect(backupDir: string) {
   } catch {
     return { ok: false, message: `No readable ${MANIFEST} — this folder is not an Embabel backup.` }
   }
-  // Both volumes or nothing: a graph without its documents (or the reverse) is
-  // an appliance that contradicts itself, which is worse than a refusal.
-  for (const file of VOLUME_FILES) {
+  // Every volume it was taken with, or nothing: a graph without its documents (or
+  // the reverse) is an appliance that contradicts itself, which is worse than a refusal.
+  const named = Array.isArray(manifest.volumes) && manifest.volumes.length ? manifest.volumes : LEGACY_VOLUME_FILES
+  for (const file of named as string[]) {
     if (!fs.existsSync(path.join(backupDir, file))) {
       return { ok: false, message: `Backup is incomplete — ${file} is missing.` }
     }

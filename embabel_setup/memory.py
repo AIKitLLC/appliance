@@ -30,7 +30,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
-from .settings import env_file_value
+from .settings import canonical_engine, env_file_value
 
 MIB = 1024 ** 2
 GIB = 1024 ** 3
@@ -67,6 +67,12 @@ class Share:
 APP = Share("APP_MEM_LIMIT", minimum=3 * GIB // 2, weight=45, maximum=8 * GIB)
 NEO4J = Share("NEO4J_MEM_LIMIT", minimum=7 * GIB // 4, weight=30, maximum=8 * GIB)
 DOCLING = Share("DOCLING_MEM_LIMIT", minimum=5 * GIB // 2, weight=25, maximum=8 * GIB)
+# On the Embabel engine the graph is in the app's heap, so the app is sized as the app and
+# the graph together: the graph's weight joins its own, and its ceiling rises by what the
+# graph could have had. Same minimum — an empty graph costs the heap nothing — and an
+# estimate in the same sense as the others, to be moved when a large graph is measured.
+EMBABEL_APP = Share("APP_MEM_LIMIT", minimum=APP.minimum, weight=APP.weight + NEO4J.weight,
+                    maximum=APP.maximum + NEO4J.maximum)
 
 # Inside Neo4j's limit: the heap is a share of it, the page cache is what is left after
 # the heap and the process's own off-heap needs (netty, metaspace, APOC).
@@ -101,10 +107,13 @@ def docling_workers(limit: int) -> int:
 
 
 def shares_for(engine: str) -> list[Share]:
-    """Which services are sized. With the in-memory engine the graph lives inside the
-    app, so its share is the app's to use; FalkorDB is not sized yet, so it is held back
-    as unallocated rather than given away to the services that are."""
-    return [APP, NEO4J, DOCLING] if engine == "NEO4J" else [APP, DOCLING]
+    """Which services are sized. With the Embabel engine the graph lives inside the app,
+    so its share is the app's to use. FalkorDB is not sized yet: its container runs
+    unlimited, and the app and docling split what is left as they would without it."""
+    engine = canonical_engine(engine)
+    if engine == "NEO4J":
+        return [APP, NEO4J, DOCLING]
+    return [EMBABEL_APP, DOCLING] if engine == "EMBABEL" else [APP, DOCLING]
 
 
 def split(budget: int, shares: list[Share]) -> dict[str, int]:

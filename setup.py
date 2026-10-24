@@ -96,6 +96,7 @@ from embabel_setup.scenarios import *    # noqa: F403 — the world in a named s
 from embabel_setup.sandbox import *      # noqa: F403 — a code-mode sandbox of your own
 from embabel_setup.embeddings import *   # noqa: F403 — the embedding model, if any
 from embabel_setup.trust import *        # noqa: F403 — company certificate authorities
+from embabel_setup.pins import *         # noqa: F403 — what an install runs on, written down
 # Imported as a module, not starred: the wizard is a small named vocabulary
 # (`wizard.pending`, `wizard.MCP`) and reads better said out loud than merged
 # into this file's namespace alongside forty other things.
@@ -209,6 +210,10 @@ def main() -> int:
     # Before compose is invoked for anything: a new instance without a block
     # would fall back to the default base and collide with the first appliance.
     if not args.uninstall:
+        # FIRST, while "is there a .env yet" still means "has this instance been
+        # created": the line below writes one. A new instance gets the new choices —
+        # the Embabel engine among them — and one that exists keeps what it runs on.
+        pin_install(creating=True)
         ensure_port_block()
 
     # Line-buffered even when stdout is a pipe. Subprocesses (compose, docker logs)

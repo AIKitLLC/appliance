@@ -89,7 +89,9 @@ agentic connects to.
 
 **L1 — surfaces serve.** The worlds API and the console answer on the instance's ports
 (the default instance's are 11043 and 11044; any other's are in its `.env.<name>` and in
-the install's output), Neo4j browser and bolt answer, and an MCP connection lists
+the install's output), the graph answers — on a new install the Embabel engine, with no Neo4j
+container at all (`embabel ps`); Neo4j browser and bolt only on an install made with
+`GRAPH_TYPE=NEO4J` — and an MCP connection lists
 capabilities (`available_capabilities`). Use the credentials the onboarding just created —
 retyping stale ones tests your memory, not the install.
 

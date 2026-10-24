@@ -9,13 +9,14 @@ the jar, and works with the container stopped.
 from __future__ import annotations
 import json
 import os
+import re
 import struct
 import subprocess
 import zlib
 
 from .core import APPLIANCE_DIR
 from .dockerlib import MODE_SERVICE, _compose, _docker, backup_mode, find_mode_container, service_container
-from .settings import compose_project, source_ref, source_repo
+from .settings import compose_project, env_file_value, graph_engine, source_ref, source_repo
 
 # ── what is actually running ────────────────────────────────────────────────
 #
@@ -56,13 +57,13 @@ def _run_in(target: str, is_container: bool, *args: str, binary: bool = False):
                               text=not binary)
     except (subprocess.SubprocessError, FileNotFoundError, OSError):
         return None
-def _jar_entry(target: str, is_container: bool, entry: str) -> str | None:
-    """One file out of the jar, without moving the jar.
+def _jar_directory(target: str, is_container: bool) -> bytes | None:
+    """The jar's central directory — every entry's name and offset — without moving the jar.
 
-    Zip stores its index at the END, so the tail gives every entry's offset;
-    then a single seek reads that entry's bytes. Zip64 because the jar is well
-    past 4GB worth of entries' worth of offsets on some builds — the classic
-    end-of-central-directory records 0xFFFFFFFF and defers to the Zip64 one.
+    Zip stores its index at the END, so the tail gives the directory's offset; then a
+    single seek reads it. Zip64 because the jar is well past 4GB worth of entries' worth
+    of offsets on some builds — the classic end-of-central-directory records 0xFFFFFFFF
+    and defers to the Zip64 one.
     """
     tail = _run_in(target, is_container, "sh", "-c", f"tail -c 70000 {JAR_PATH}", binary=True)
     if not tail or tail.returncode != 0:
@@ -76,13 +77,29 @@ def _jar_entry(target: str, is_container: bool, entry: str) -> str | None:
         if offset == 0xFFFFFFFF:
             zip64 = data.rfind(b"PK\x06\x06")
             _size, offset = struct.unpack("<QQ", data[zip64 + 40:zip64 + 56])
+    except struct.error:
+        return None
+    block = 65536
+    got = _run_in(target, is_container, "dd", f"if={JAR_PATH}", f"bs={block}",
+                  f"skip={offset // block}", "status=none", binary=True)
+    if not got or got.returncode != 0:
+        return None
+    return got.stdout[offset % block:]
 
-        block = 65536
-        got = _run_in(target, is_container, "dd", f"if={JAR_PATH}", f"bs={block}",
-                      f"skip={offset // block}", "status=none", binary=True)
-        if not got or got.returncode != 0:
-            return None
-        directory = got.stdout[offset % block:]
+
+def jar_holds(target: str, is_container: bool, prefix: str) -> bool | None:
+    """Whether the server's jar has an entry starting with `prefix`; None if it cannot be read.
+    How a capability with no endpoint to ask is told apart: by the module that brings it."""
+    directory = _jar_directory(target, is_container)
+    return None if directory is None else prefix.encode() in directory
+
+
+def _jar_entry(target: str, is_container: bool, entry: str) -> str | None:
+    """One file out of the jar, found through its central directory, then a single seek."""
+    directory = _jar_directory(target, is_container)
+    if directory is None:
+        return None
+    try:
         at = directory.find(entry.encode())
         if at < 0:
             return None
@@ -219,17 +236,27 @@ def appliance_versions(mode: str | None = None) -> dict:
         "checkout": checkout_identity(),
         "appliance": image_identity(image) if image else {},
         "source": source_identity(mode),
+        # Which engine holds the graph is part of what an install IS: two appliances on
+        # the same image and different engines hold different data.
+        "engine": graph_engine(),
         "neo4j": image_identity(neo4j_image() or ""),
     }
 def neo4j_image() -> str | None:
-    """Pinned in the tracked compose files rather than in .env, so the CHECKOUT
-    is its version — but read it rather than restating it here."""
+    """The Neo4j this install runs, or None on an engine that has no Neo4j. Its own
+    container first; else the version .env pins, else the one infra.yml falls back to —
+    read rather than restated here, so the CHECKOUT stays its version."""
+    if graph_engine() != "NEO4J":
+        return None
     container = service_container("neo4j", stopped=True)
     run = _docker("inspect", container, "--format", "{{.Config.Image}}", timeout=15) if container else None
     if run and run.returncode == 0 and run.stdout.strip():
         return run.stdout.strip()
+    pinned = os.environ.get("NEO4J_VERSION") or env_file_value("NEO4J_VERSION")
+    if pinned:
+        return f"neo4j:{pinned}"
     with open(os.path.join(APPLIANCE_DIR, "infra.yml")) as f:
         for line in f:
-            if line.strip().startswith("image: neo4j:"):
-                return line.split("image:", 1)[1].strip()
+            found = re.search(r"image:\s*neo4j:\$\{NEO4J_VERSION:-([^}]+)\}", line)
+            if found:
+                return f"neo4j:{found.group(1)}"
     return None

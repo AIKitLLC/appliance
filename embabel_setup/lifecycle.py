@@ -27,6 +27,7 @@ from .agents import (MCP_SERVER_NAME, install_path_entry, remove_path_entry, she
 from .colour import MIDDOT, TICK, bold, dim, good, heading, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
+from .pins import pin_before_start
 from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred_services,
                         retire_monitoring,
                         announce_github_token, appliance_containers, compose_command, compose_env,
@@ -710,6 +711,9 @@ def ensure_mode(mode: str) -> bool:
     # whatever was published the first time. The line above has been claiming
     # otherwise for as long as it has existed.
     refresh_floating_images(mode, core_services(mode))
+    # After the pull, before the containers exist: a new Embabel install's store is
+    # pinned from the image that is about to run it (see pins.pin_before_start).
+    pin_before_start(mode)
     run = _compose(mode, "up", "-d", *core_services(mode))
     if run.returncode != 0:
         # The message names docker, because the failure is docker's and the reason is

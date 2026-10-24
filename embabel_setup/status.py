@@ -18,6 +18,7 @@ from .core import BOOT_WAIT_SECONDS
 from .dockerlib import (
     _answers, _docker, container_started_at, find_graph_container, image_progress, mode_of,
 )
+from .settings import graph_engine
 
 # ── the status line ─────────────────────────────────────────────────────────
 #
@@ -29,7 +30,8 @@ from .dockerlib import (
 # WHAT IT SHOWS IS REAL, never a fake percentage. Three lamps, each read from
 # docker or from the API on every tick:
 #
-#   graph    the neo4j container's own healthcheck
+#   graph    the graph container's own healthcheck — absent on the Embabel
+#            engine, whose graph starts inside the server and is its lamp
 #   server   the mode container's healthcheck
 #   API      whether the door answers HTTP yet
 #
@@ -152,8 +154,11 @@ def boot_phase(container: str | None, base: str) -> str:
     def lamp(ok: bool, label: str) -> str:
         return f"{good(BULLET) if ok else MIDDOT} {label if ok else dim(label)}"
 
-    graph = find_graph_container()
-    parts = [lamp(graph is not None and health(graph) == "healthy", "graph")]
+    parts = []
+    # No lamp for a graph with no container: one that could never light reads as a stall.
+    if graph_engine() != "EMBABEL":
+        graph = find_graph_container()
+        parts.append(lamp(graph is not None and health(graph) == "healthy", "graph"))
     if container:
         parts.append(lamp(health(container) == "healthy", "server"))
     parts.append(lamp(_answers(base), "API"))

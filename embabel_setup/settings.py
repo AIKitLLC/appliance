@@ -40,15 +40,23 @@ def api_address(base: str) -> str:
 
 
 def surface_urls() -> dict:
-    """Every address this instance publishes, by the name a person uses for it."""
+    """Every address this instance publishes, by the name a person uses for it.
+
+    `graph` is Neo4j Browser, so only an appliance that runs Neo4j has one. On the
+    Embabel engine the graph is inside the server and there is no browser to open;
+    `bolt` is then the server's own Bolt port, which Neo4j's tools connect to."""
     p = ports_for(port_base())
-    return {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
+    urls = {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
             "worlds": f"http://localhost:{p['WORLDS_PORT']}",
             "console": console_url(),
-            "graph": f"http://localhost:{p['NEO4J_BROWSER_PORT']}",
-            "bolt": f"bolt://localhost:{p['NEO4J_BOLT_PORT']}",
             "dashboards": f"http://localhost:{p['GRAFANA_PORT']}",
             "metrics": f"http://localhost:{p['PROMETHEUS_PORT']}"}
+    if graph_engine() == "NEO4J":
+        urls["graph"] = f"http://localhost:{p['NEO4J_BROWSER_PORT']}"
+        urls["bolt"] = f"bolt://localhost:{p['NEO4J_BOLT_PORT']}"
+    elif graph_engine() == "EMBABEL":
+        urls["bolt"] = f"bolt://localhost:{p['WORLDS_BOLT_PORT']}"
+    return urls
 # Machine-local configuration: keys, timezone, world template, realms directory.
 # Gitignored, and removed by --uninstall — which is the difference between that
 # and --fresh, since a .env that survives means the next run asks nothing.
@@ -151,10 +159,11 @@ def set_env_var(key: str, value: str, why: tuple[str, ...] = ()) -> None:
         with open(env_path()) as f:
             lines = f.read().splitlines()
     written = escape_for_env(value)
-    for index, line in enumerate(lines):
-        if line.startswith(f"{key}="):
-            lines[index] = f"{key}={written}"
-            break
+    # The LAST assignment is replaced, found by the reader's rules: that is the one
+    # compose acts on, and `KEY = value` or `export KEY=` is the same key to it.
+    found = [i for i, line in enumerate(lines) if (_dotenv_assignment(line) or ("",))[0] == key]
+    if found:
+        lines[found[-1]] = f"{key}={written}"
     else:
         lines += ["", *why, f"{key}={written}"]
     with open(env_path(), "w") as f:
@@ -421,6 +430,30 @@ def ensure_port_block() -> int:
     if instance() != DEFAULT_INSTANCE or base != DEFAULT_PORT_BASE:
         print(f"  Instance '{instance()}' uses ports {base}-{base + PORT_BLOCK - 1}.")
     return base
+# The graph engine, as the server spells it. Which one an install runs is decided once
+# and written into .env — see pins.py; these only read the answer.
+GRAPH_TYPE_VAR = "GRAPH_TYPE"
+# What compose falls back to when .env says nothing, and so what every install ran
+# before the engine was written down. It stays NEO4J for good: an upgrade runs the
+# installed CLI against the new compose files, and that run must not move anybody.
+UNPINNED_ENGINE = "NEO4J"
+# The Embabel engine was called MEMORY before it had a name of its own. The server still
+# accepts that spelling, and so does every reader here, so no .env has to be edited.
+ENGINE_ALIASES = {"MEMORY": "EMBABEL"}
+
+
+def canonical_engine(value: str | None) -> str | None:
+    """An engine name as the server reads it, the old spelling folded in; None for blank."""
+    value = (value or "").strip().upper()
+    return ENGINE_ALIASES.get(value, value) or None
+
+
+def graph_engine() -> str:
+    """The engine this appliance runs — GRAPH_TYPE from the environment or .env, and
+    NEO4J when neither says, which is what compose falls back to as well."""
+    return canonical_engine(os.environ.get(GRAPH_TYPE_VAR) or env_file_value(GRAPH_TYPE_VAR)) or UNPINNED_ENGINE
+
+
 def _docker_port_bases() -> set[int]:
     """Port blocks owned by appliance containers, including other checkouts."""
     # Late for the settings <-> dockerlib cycle documented in installed_instances().
@@ -503,20 +536,82 @@ def volume_name(key: str) -> str:
     """The real Docker volume name — compose prefixes every volume with the project."""
     return f"{compose_project()}_{key}"
 def volume_exists(key: str) -> bool:
+    # Late for the settings <-> dockerlib cycle documented in installed_instances().
+    # Without it this raised NameError, and so did every backup that asked.
+    from .dockerlib import _docker
     run = _docker("volume", "inspect", volume_name(key), timeout=15)
     return run is not None and run.returncode == 0
+# What a double-quoted .env value may escape, as compose reads it.
+_DOTENV_ESCAPES = {"n": "\n", "r": "\r", "t": "\t", "\\": "\\", '"': '"', "$": "$"}
+
+
+def _dotenv_assignment(line: str) -> tuple[str, str] | None:
+    """One .env line as compose reads it: (key, value), or None for anything else.
+
+    THE SAME RULES AS COMPOSE, because the two read the same file and a value they
+    disagree on is a value the appliance acts on and the container never sees — or
+    the reverse. `GRAPH_TYPE=NEO4J   # pinned` is NEO4J to compose, and was the whole
+    tail, comment included, to a reader that only split on `=`: an engine name
+    matching nothing. So: `export ` is optional, whitespace around the key and before
+    the value is not part of either, a quoted value ends at its closing quote, and an
+    unquoted one ends where a `#` follows whitespace. `$$` is an escaped dollar
+    everywhere except inside single quotes, which compose does not interpolate.
+
+    Hand-written rather than a library because the installer is standard library
+    only, and the format is small and fixed by compose. Multi-line quoted values are
+    not read; nothing the appliance writes or reads is one.
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export "):].lstrip()
+    key, eq, rest = stripped.partition("=")
+    key = key.strip()
+    if not eq or not key:
+        return None
+    rest = rest.lstrip(" \t")
+    if rest[:1] == "'":
+        end = rest.find("'", 1)
+        return key, rest[1:end] if end > 0 else rest[1:]
+    if rest[:1] == '"':
+        out, i = [], 1
+        while i < len(rest) and rest[i] != '"':
+            if rest[i] == "\\" and i + 1 < len(rest):
+                i += 1
+                out.append(_DOTENV_ESCAPES.get(rest[i], "\\" + rest[i]))
+            else:
+                out.append(rest[i])
+            i += 1
+        return key, "".join(out).replace("$$", "$")
+    comment = re.search(r"\s#", rest)
+    if comment:
+        rest = rest[:comment.start()]
+    return key, rest.strip().replace("$$", "$")
+
+
 def _env_file_value(path: str, key: str) -> str | None:
+    """The value compose would read for `key`, unescaped — what was stored is a
+    doubled-dollar form for compose's benefit, not the value itself. The LAST
+    assignment wins, as it does for compose."""
     if not os.path.exists(path):
         return None
+    found = None
     with open(path) as f:
         for line in f:
-            stripped = line.strip()
-            if stripped.startswith(f"{key}="):
-                # Unescaped on the way out: what was stored is a doubled-dollar
-                # form for compose's benefit, not the value itself.
-                raw = stripped.split("=", 1)[1].strip()
-                return raw.replace("$$", "$") or None
-    return None
+            parsed = _dotenv_assignment(line)
+            if parsed and parsed[0] == key:
+                found = parsed[1] or None
+    return found
+
+
+def env_file_assigns(key: str) -> bool:
+    """Whether this instance's .env has a line for `key` at all, empty or not. An empty
+    one is still somebody's answer — `embabel embeddings off` writes exactly that."""
+    if not os.path.exists(env_path()):
+        return False
+    with open(env_path()) as f:
+        return any((_dotenv_assignment(line) or ("",))[0] == key for line in f)
 
 
 def env_file_value(key: str, name: str | None = None) -> str | None:

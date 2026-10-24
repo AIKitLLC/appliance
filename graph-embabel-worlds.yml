@@ -1,0 +1,49 @@
+# The Embabel graph engine — what a new appliance runs. Composed in when .env says
+#
+#   GRAPH_TYPE=EMBABEL        (or MEMORY, its old name, which still works)
+#
+# which setup writes when it creates an appliance. The graph lives INSIDE the server:
+# no graph container. A new appliance's store is one SQLite file, /data/graph/graph.sqlite,
+# on the same volume as the worlds, so the world and its graph are one backup and one restore.
+#
+# AN OVERLAY, NOT THE DEFAULT COMPOSITION, though it is the default for new installs.
+# Every appliance installed before that choice runs Neo4j with nothing in .env saying
+# so, and `embabel upgrade` runs the CLI that was installed against the compose files
+# it has just pulled — so the files' own fallback has to stay Neo4j. The choice is made
+# once, in .env, and this file is what that line composes in. Composed in, it
+# reconfigures the server and parks the neo4j service behind a profile nothing
+# activates: no service is added, one is idled, and no Neo4j container is created.
+#
+# THE ENGINES DO NOT SHARE DATA. This store, the Neo4j volume and the FalkorDB volume
+# are separate graphs; switching engines is choosing which one you are talking to.
+#
+# graph-memory-worlds.yml is this file under the engine's old name, for one run: the
+# CLI an upgrade starts with still looks for that name. scripts/check-graph-engine.py
+# keeps the two identical below this header.
+services:
+
+  worlds:
+    environment:
+      # The engine, by its own name: an install whose .env says MEMORY gets the same one.
+      # The server types Drivine's datasource for it, so Drivine's repositories and schema
+      # catalogs run over the engine rather than against a Neo4j that is not there.
+      - GRAPH_TYPE=EMBABEL
+      # The store and where it is, which .env names for every install (embabel_setup/
+      # pins.py): a new one is written `sqlite`, one made before SQLite was the server's
+      # default is written whichever store its volume holds. These fallbacks are for the
+      # run before that — an upgrade's, by the CLI that was installed — and are what an
+      # Embabel install ran on until then: the journal-file store, on the data volume.
+      # They do not change; a new choice is a new value in pins.py.
+      - VC_EMBABEL_STORE=${VC_EMBABEL_STORE:-snapshot}
+      - VC_EMBABEL_JOURNAL=${VC_EMBABEL_JOURNAL:-/data/graph/memory.journal}
+      - GRAPH_EMBABEL_SQLITE_PATH=${GRAPH_EMBABEL_SQLITE_PATH:-/data/graph/graph.sqlite}
+      # always | everysec | off. everysec bounds a crash's loss at about a second of writes.
+      - VC_EMBABEL_FSYNC=${VC_EMBABEL_FSYNC:-${VC_MEMORY_FSYNC:-everysec}}
+    # No graph service to wait for: the graph starts when the server does.
+    depends_on: !override []
+
+  # Parked, not removed: a profile the composition never activates keeps Neo4j out of
+  # this run without editing infra.yml. On an appliance that used to run Neo4j, its
+  # volume — and that graph — stay exactly where they were.
+  neo4j:
+    profiles: ["parked-by-embabel"]

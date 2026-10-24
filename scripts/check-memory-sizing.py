@@ -57,10 +57,15 @@ check(spread == {"A": 2 * GIB, "B": 8 * GIB}, f"a capped share's excess is not p
 tight = memory.split(GIB, SIZED)
 check(all(tight[s.var] == s.minimum for s in SIZED), f"below the minimums: {tight}")
 
-# The in-memory engine has no graph container; its share is the app's.
-check("NEO4J_MEM_LIMIT" not in memory.plan(small, "MEMORY"), "MEMORY engine was given a neo4j limit")
-check(memory.plan(small, "MEMORY")["APP_MEM_LIMIT"] > memory.plan(small)["APP_MEM_LIMIT"],
-      "MEMORY engine: the app did not absorb the graph's share")
+# The Embabel engine has no graph container; the graph is in the app's heap, so its share
+# and its ceiling are the app's. MEMORY is its old name and sizes the same.
+for engine in ("EMBABEL", "MEMORY"):
+    check("NEO4J_MEM_LIMIT" not in memory.plan(small, engine), f"{engine} engine was given a neo4j limit")
+    check(memory.plan(small, engine)["APP_MEM_LIMIT"] > memory.plan(small)["APP_MEM_LIMIT"],
+          f"{engine} engine: the app did not absorb the graph's share")
+    check(memory.plan(64 * GIB, engine)["APP_MEM_LIMIT"] > memory.APP.maximum,
+          f"{engine} engine on a large machine: the app is capped as if the graph were elsewhere")
+check(memory.plan(small, "EMBABEL") == memory.plan(small, "MEMORY"), "MEMORY and EMBABEL size differently")
 
 # Neo4j's page cache is what its limit leaves after the heap and the process itself.
 heap, pagecache = memory.neo4j_memory(4 * GIB)

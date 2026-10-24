@@ -103,11 +103,12 @@ services:
       - TZ=${TZ:-Etc/UTC}
       # Neo4j on the compose network — the in-container Bolt port, not the 7891
       # host mapping a workstation checkout uses.
-      # The appliance's engine is a SET default, not an inherited one: the app
-      # image now defaults to its in-process engine when GRAPH_TYPE is absent
-      # (embabel/me#1061), and an appliance composition must not change engines
-      # because the app's default moved. NEO4J unless .env says otherwise; the
-      # graph-memory/falkordb overlays override this explicitly.
+      # The engine is .env's answer — setup writes EMBABEL for a new appliance, and
+      # the CLI writes NEO4J for one made before — and the graph-embabel/falkordb
+      # overlays then set it explicitly. This fallback is for an appliance whose .env
+      # does not say yet, which ran Neo4j by default, and it stays NEO4J for good: an
+      # upgrade runs the installed CLI against these files, and that run must not
+      # move anybody's graph (embabel_setup/pins.py).
       - GRAPH_TYPE=${GRAPH_TYPE:-NEO4J}
       - NEO4J_HOST=neo4j
       - NEO4J_PORT=7687

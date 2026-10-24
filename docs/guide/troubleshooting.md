@@ -264,6 +264,10 @@ account that actually exists, or `embabel agents` to re-point your coding agents
 
 ## Neo4j connection failures in the log
 
+On a Neo4j appliance. On the Embabel engine there is no Neo4j to connect to, and a line
+like these means the server was started without its engine overlay — check that `.env`
+says `GRAPH_TYPE=EMBABEL` and start it through `embabel up`, not a bare `docker compose`.
+
 **These are never routine.** A healthy appliance logs nothing about Neo4j even when
 Neo4j is restarted underneath it — the driver reconnects lazily and silently. Verified by
 bouncing it under a live appliance: zero lines, and every surface kept answering.
@@ -393,7 +397,7 @@ alongside them.
 
 | | |
 |---|---|
-| memory, core running | ~4.6 GB (worlds 2.47, neo4j 2.09, console 0.01) |
+| memory, core running | ~4.6 GB on Neo4j (worlds 2.47, neo4j 2.09, console 0.01); not yet measured on the Embabel engine, where the graph is in the worlds container |
 | disk, core | ~2.9 GB of images plus ~1.1 GB for the embedding model |
 | disk, everything | ~14 GB — docling alone is 7.2 GB and arrives in the background |
 
@@ -428,8 +432,8 @@ Defaults; `EMBABEL_PORT_BASE` in `.env` shifts the whole block.
 | 11042 | Embabel Me — the assistant |
 | 11043 | Worlds — the API and both MCP doors |
 | 11044 | the Worlds console |
-| 11045 | Neo4j browser |
-| 11046 | Neo4j bolt, for `cypher-shell` |
+| 11045 | Neo4j browser — a Neo4j appliance only |
+| 11046 | Neo4j bolt, for `cypher-shell` — a Neo4j appliance only |
 | 11047 | Grafana, when `EMBABEL_MONITORING=on` |
 | 11048 | Prometheus, when `EMBABEL_MONITORING=on` |
 
