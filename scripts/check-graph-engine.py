@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
-from embabel_setup import dockerlib, pins, settings  # noqa: E402
+from embabel_setup import backup, dockerlib, pins, settings  # noqa: E402
 
 failures = []
 
@@ -209,6 +209,58 @@ for mode in ("worlds", "me"):
     with patch.dict(os.environ, {"GRAPH_TYPE": "NEO4J"}):
         check(dockerlib.graph_overlay_file(mode) is None, f"{mode}: Neo4j has an overlay")
         check("neo4j" in dockerlib.core_services(mode), f"{mode} on NEO4J does not start neo4j")
+
+# ── backup and restore ───────────────────────────────────────────────────────
+
+def backed_up(engine, volumes):
+    """Take a backup with the volumes stubbed, then inspect it and restore it."""
+    streamed, restored = [], []
+
+    def stream(argv, path, *, into_volume):
+        (restored if into_volume else streamed).append(argv[argv.index("-v") + 1].split(":")[0])
+        if not into_volume:
+            with open(path, "wb") as f:
+                f.write(b"tar")
+        return True, ""
+
+    with tempfile.TemporaryDirectory() as checkout, tempfile.TemporaryDirectory() as dest:
+        with open(os.path.join(checkout, ".env"), "w") as f:
+            f.write(f"EMBABEL_PORT_BASE=11042\nGRAPH_TYPE={engine}\n")
+        clean = {k: v for k, v in os.environ.items() if k != "GRAPH_TYPE"}
+        with patch.object(settings, "APPLIANCE_DIR", checkout), patch.object(backup, "APPLIANCE_DIR", checkout), \
+                patch.dict(os.environ, clean, clear=True), \
+                patch.object(backup, "volume_exists", side_effect=lambda key: key in volumes), \
+                patch.object(pins, "volume_exists", side_effect=lambda key: key in volumes), \
+                patch.object(backup, "_stream_volume", side_effect=stream), \
+                patch.object(backup, "_docker", return_value=subprocess.CompletedProcess([], 0, "", "")), \
+                patch.object(backup, "_compose", return_value=subprocess.CompletedProcess([], 0, "", "")), \
+                patch.object(backup, "running_mode_names", return_value=[]), \
+                patch.object(backup, "backup_mode", return_value="worlds"), \
+                patch.object(backup, "appliance_versions", return_value={}), \
+                patch.object(dockerlib, "_docker", return_value=None), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            settings.use_instance(settings.DEFAULT_INSTANCE)
+            try:
+                taken = backup.back_up(dest)
+                manifest = backup.inspect_backup(taken)
+                backup.restore(taken)
+            except settings.SetupError as e:
+                return str(e), [], [], {}
+    return None, streamed, restored, manifest
+
+
+data = settings.volume_name("embabel_assistant_data")
+neo = settings.volume_name("embabel_appliance_neo4j_data")
+error, streamed, restored, manifest = backed_up("EMBABEL", ("embabel_assistant_data",))
+check(error is None, f"an Embabel appliance with no Neo4j volume could not be backed up: {error}")
+check(streamed == [data] and restored == [data], f"Embabel backup copied {streamed}, restored {restored}")
+check(manifest.get("volumes") == ["assistant-data.tgz"] and manifest.get("engine") == "EMBABEL",
+      f"the manifest does not say what it holds: {manifest}")
+error, streamed, restored, _manifest = backed_up("NEO4J", ("embabel_assistant_data", "embabel_appliance_neo4j_data"))
+check(error is None and streamed == [data, neo] and restored == [data, neo],
+      f"a Neo4j backup no longer carries the graph: {error} {streamed} {restored}")
+check(backup.backup_volume_files({"files": ["x"]}) == backup.LEGACY_BACKUP_FILES,
+      "a backup from before the manifest named its volumes is no longer read as Neo4j's")
 
 if failures:
     print("\n".join("FAIL " + f for f in failures))

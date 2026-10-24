@@ -1,9 +1,11 @@
 """Everything the appliance knows, copied to the host's own disk and brought
 back from it.
 
-COLD ON PURPOSE. Community Neo4j has no online backup, so whichever mode is
-running stops for the copy and starts again afterwards — including on failure,
-so a backup that goes wrong is never the reason an assistant is down.
+COLD ON PURPOSE. A graph copied while it is being written is not a graph:
+Community Neo4j has no online backup, and the Embabel engine's SQLite file and
+journal are no safer under a live tar. So whichever mode is running stops for
+the copy and starts again afterwards — including on failure, so a backup that
+goes wrong is never the reason an assistant is down.
 """
 
 from __future__ import annotations
@@ -19,26 +21,31 @@ from .dockerlib import (
     OVERRIDE_FILE, _compose, _docker, backup_mode, running_mode_names, running_modes,
 )
 from .settings import (
-    compose_project, configured_mode, env_file, instance, volume_exists,
+    compose_project, configured_mode, env_file, graph_engine, instance, volume_exists,
     volume_name,
 )
 from .versions import appliance_versions
 
 # ── backup and restore ──────────────────────────────────────────────────────
 #
-# WHAT A BACKUP IS. Everything a person would grieve over lives in two named
-# volumes — embabel_assistant_data (worlds, documents, artifacts, credentials)
-# and embabel_appliance_neo4j_data (the knowledge graph) — plus the host-side
-# files that make this checkout THIS appliance. A backup is a plain folder
-# holding a cold tarball of each volume, those files, and a manifest saying
-# what made it. A folder rather than one enveloping archive on purpose: the
-# tarballs inside are already compressed, and re-archiving gigabytes buys a
-# second wait and nothing else.
+# WHAT A BACKUP IS. Everything a person would grieve over lives in named volumes —
+# embabel_assistant_data (worlds, documents, artifacts, credentials, and on the
+# Embabel engine the graph itself, under /data/graph) and, on the engines that run
+# a graph container, that container's volume — plus the host-side files that make
+# this checkout THIS appliance. A backup is a plain folder holding a cold tarball
+# of each volume, those files, and a manifest saying what made it. A folder rather
+# than one enveloping archive on purpose: the tarballs inside are already
+# compressed, and re-archiving gigabytes buys a second wait and nothing else.
 #
-# COLD ON PURPOSE. Community Neo4j has no online backup. So whichever mode is
-# running is stopped, the volumes are copied at rest, and the SAME mode is
-# brought back up — a copy taken under a live graph is corrupt in exactly the
-# cases that make somebody reach for a backup.
+# WHICH VOLUMES is the engine's answer, read from .env: an Embabel appliance has no
+# Neo4j volume, and requiring one made its backup fail before it began. The
+# manifest names the tarballs it holds, and that list — not this table — is what a
+# restore needs, so a backup restores into whatever engine it was taken from.
+#
+# COLD ON PURPOSE. A graph copied while it is written is a graph that will not
+# restore — Community Neo4j has no online backup, and a SQLite file or a journal
+# caught mid-write is torn the same way. So whichever mode is running is stopped,
+# the volumes are copied at rest, and the SAME mode is brought back up.
 #
 # The bytes never cross a bind mount: a helper container tars the volume to
 # stdout and this process streams that to a file (and back, on restore). So
@@ -52,13 +59,31 @@ from .versions import appliance_versions
 # The keys as the compose files declare them; the REAL names carry the project
 # prefix, which is pinned in docker-compose.yml precisely so they cannot move
 # out from under an install.
-BACKUP_VOLUMES = (
-    ("embabel_assistant_data", "assistant-data.tgz", "worlds and documents"),
-    ("embabel_appliance_neo4j_data", "neo4j-data.tgz", "the knowledge graph"),
-)
+DATA_VOLUME = ("embabel_assistant_data", "assistant-data.tgz", "worlds and documents")
+GRAPH_VOLUMES = {
+    "NEO4J": ("embabel_appliance_neo4j_data", "neo4j-data.tgz", "the knowledge graph"),
+    "FALKORDB": ("embabel_appliance_falkordb_data", "falkordb-data.tgz", "the knowledge graph"),
+}
+# What a backup from before the manifest named its tarballs holds: Neo4j's.
+LEGACY_BACKUP_FILES = ("assistant-data.tgz", "neo4j-data.tgz")
+
+
+def backup_volumes() -> tuple[tuple[str, str, str], ...]:
+    """The volumes this appliance's data is in, on the engine .env names."""
+    graph = GRAPH_VOLUMES.get(graph_engine())
+    return (DATA_VOLUME, graph) if graph else (DATA_VOLUME,)
+
+
+def _volume_for(filename: str) -> tuple[str, str, str] | None:
+    for entry in (DATA_VOLUME, *GRAPH_VOLUMES.values()):
+        if entry[1] == filename:
+            return entry
+    return None
+
+
 # Host-side state that shapes the appliance. Without .env a restored graph is
-# unreachable — Neo4j's password lives IN its volume and the appliance's copy of
-# it lives here. secrets.env holds the realm API credentials the compose files
+# unreachable — it names the engine and store the graph is in, and Neo4j's
+# password lives IN its volume while the appliance's copy of it lives here. secrets.env holds the realm API credentials the compose files
 # load by `env_file:`; a restore without it comes back with every authenticating
 # realm silently dead, which is a worse outcome than a refusal.
 def backup_config_files() -> tuple[str, ...]:
@@ -117,12 +142,17 @@ def inspect_backup(backup_dir: str) -> dict:
             manifest = json.load(f)
     except (OSError, ValueError):
         raise SetupError(f"No readable {BACKUP_MANIFEST} in {backup_dir} — that is not an Embabel backup.")
-    # Both volumes or nothing: a graph without its documents (or the reverse) is
-    # an appliance that contradicts itself, which is worse than a refusal.
-    for _key, filename, _what in BACKUP_VOLUMES:
+    # Every volume it was taken with, or nothing: a graph without its documents (or the
+    # reverse) is an appliance that contradicts itself, which is worse than a refusal.
+    for filename in backup_volume_files(manifest):
         if not os.path.exists(os.path.join(backup_dir, filename)):
             raise SetupError(f"Backup is incomplete — {filename} is missing.")
     return manifest
+def backup_volume_files(manifest: dict) -> tuple[str, ...]:
+    """The volume tarballs a backup holds, as its manifest names them. One from before
+    the manifest named them holds Neo4j's, which was the only engine anybody backed up."""
+    named = manifest.get("volumes")
+    return tuple(named) if isinstance(named, list) and named else LEGACY_BACKUP_FILES
 def list_backups(parent: str) -> list[tuple[str, dict]]:
     """Every restorable backup directly under a folder, newest first. Unreadable
     entries are skipped rather than reported — this is a listing, not a doctor."""
@@ -136,7 +166,7 @@ def list_backups(parent: str) -> list[tuple[str, dict]]:
         except SetupError:
             continue
     return sorted(found, key=lambda pair: pair[1].get("createdAt", ""), reverse=True)
-def _write_manifest(dest: str, saved: list[str], mode: str) -> None:
+def _write_manifest(dest: str, saved: list[str], volumes: list[str], mode: str) -> None:
     """Enough to answer, a year from now, "what is this and can I restore it here".
 
     The identity recorded is the one `embabel version` prints, and for the same
@@ -149,6 +179,8 @@ def _write_manifest(dest: str, saved: list[str], mode: str) -> None:
         "instance": instance(),
         "mode": mode,
         "files": saved,
+        "engine": graph_engine(),
+        "volumes": volumes,
         "versions": appliance_versions(mode),
     }
     with open(os.path.join(dest, BACKUP_MANIFEST), "w") as f:
@@ -166,8 +198,8 @@ def _write_manifest(dest: str, saved: list[str], mode: str) -> None:
         )
 def _copy_out(dest: str, mode: str) -> None:
     """The copy itself, between the stop and the restart."""
-    saved = []
-    for key, filename, what in BACKUP_VOLUMES:
+    saved, volumes = [], []
+    for key, filename, what in backup_volumes():
         name = volume_name(key)
         if not volume_exists(key):
             raise SetupError(f"Volume {name} does not exist — has the appliance ever run on this machine?")
@@ -179,12 +211,13 @@ def _copy_out(dest: str, mode: str) -> None:
         size = os.path.getsize(os.path.join(dest, filename)) / 1e6
         print(f"    {what}  {size:,.0f} MB")
         saved.append(filename)
+        volumes.append(filename)
 
     for filename in backup_config_files():
         if os.path.exists(os.path.join(APPLIANCE_DIR, filename)):
             shutil.copyfile(os.path.join(APPLIANCE_DIR, filename), os.path.join(dest, filename))
             saved.append(filename)
-    _write_manifest(dest, saved, mode)
+    _write_manifest(dest, saved, volumes, mode)
 def back_up(dest_dir: str = DEFAULT_BACKUP_DIR) -> str:
     """Copy the appliance into a new timestamped folder under dest_dir."""
     require_docker()
@@ -231,8 +264,8 @@ def restore(backup_dir: str) -> str:
     for stopping in was_running or [mode]:
         _compose(stopping, "stop", capture=True)
 
-    # Config first, volumes second: .env decides the ports and the Neo4j password
-    # the restored graph was created under, so compose must be reading the
+    # Config first, volumes second: .env decides the ports, the engine, and the Neo4j
+    # password the restored graph was created under, so compose must be reading the
     # backup's copy by the time anything comes back up. What is replaced is set
     # ASIDE, not deleted — one .before-restore per file, kept until the next
     # restore overwrites it. Restoring means the backup's world, so a file the
@@ -249,16 +282,21 @@ def restore(backup_dir: str) -> str:
             os.replace(current, f"{current}.before-restore")
         if os.path.exists(replacement):
             shutil.copyfile(replacement, current)
+    # A backup's .env from before the pins says nothing about what it ran on, and what
+    # it ran on is in the tarballs about to land. Late: pins imports this module.
+    from .pins import pin_install
+    pin_install(creating=False)
 
+    restoring = [entry for entry in map(_volume_for, backup_volume_files(manifest)) if entry]
     # A fresh machine has no volumes yet. Let COMPOSE create them: a volume made
     # by `docker run` lacks compose's project labels, and `up` on some versions
     # refuses to adopt it. `up --no-start` also pulls images, so a first restore
     # on a clean machine is a long one; on an existing install this never runs.
-    if any(not volume_exists(key) for key, _filename, _what in BACKUP_VOLUMES):
+    if any(not volume_exists(key) for key, _filename, _what in restoring):
         print("  Creating the appliance's volumes (this pulls images — it can take a while).")
         _compose(mode, "up", "--no-start")
 
-    for key, filename, what in BACKUP_VOLUMES:
+    for key, filename, what in restoring:
         print(f"    {what}")
         ok, err = _stream_volume(
             ["run", "--rm", "-i", "-v", f"{volume_name(key)}:/to", BACKUP_HELPER_IMAGE,
