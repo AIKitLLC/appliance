@@ -239,6 +239,19 @@ def cmd_doctor(args) -> int:
     else:
         print(f"  {s.MIDDOT}  " + s.dim(f"no {s.env_file()} yet — this appliance has not been set up here (`{embabel_command('up')}`)"))
 
+    # THE ENGINE, and whether .env says so. Every verb pins it (cli.resolve_instance), so
+    # an install without the line is one the pin could not write. A Neo4j container left
+    # beside an Embabel graph is not a fault — that graph is kept on purpose — but it is
+    # somebody else's data than the world they are looking at, and worth a line.
+    if os.path.exists(env_path):
+        engine = s.canonical_engine(s.env_file_value(s.GRAPH_TYPE_VAR))
+        check(f"graph engine {engine or s.graph_engine()}, pinned in {s.env_file()}", engine is not None,
+              f"{s.env_file()} has no GRAPH_TYPE line, so an upgrade could move this appliance's graph.\n"
+              f"       Any `{embabel_command('status')}` writes it; if that fails, add GRAPH_TYPE=NEO4J by hand.")
+        if s.graph_engine() == "EMBABEL" and s.service_container("neo4j", stopped=True):
+            print(f"  {s.MIDDOT}  " + s.dim("a Neo4j container from before is still here; the graph in it is not "
+                                          "the one this appliance uses"))
+
     realms = os.environ.get("EMBABEL_REALMS_DIR")
     if not realms and os.path.exists(env_path):
         with open(env_path) as f:
