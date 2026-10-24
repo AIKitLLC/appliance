@@ -27,7 +27,10 @@ services:
   # ONE graph, shared by both modes deliberately: in the superset design the world
   # store IS the product's data plane, and the modes are two surfaces over it.
   neo4j:
-    image: neo4j:2026.06-community
+    # The version is pinned in .env (embabel_setup/pins.py), because it is the version
+    # that writes the graph's files: a newer Neo4j migrates them and an older one cannot
+    # read them. The fallback is what every install ran before that line existed, and stays.
+    image: neo4j:${NEO4J_VERSION:-2026.06-community}
     logging: *logging
     # NO container_name — deliberately. A fixed name is global to the docker
     # daemon, so a second instance could not start; compose names containers

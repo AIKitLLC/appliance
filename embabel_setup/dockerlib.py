@@ -28,10 +28,10 @@ from .settings import (
 )
 
 # Everything else, started AFTER the mode is up and reachable. None of it is a
-# boot dependency — the mode services depend only on neo4j — and between them
-# they are most of a first run's download, docling especially. Pulling them
-# before handing over the terminal meant staring at a progress bar for several
-# gigabytes to reach a login page that needed one.
+# boot dependency — the mode services depend only on the graph's container, when
+# there is one — and between them they are most of a first run's download,
+# docling especially. Pulling them before handing over the terminal meant staring
+# at a progress bar for several gigabytes to reach a login page that needed one.
 DEFERRED_SERVICES = ("sandbox-image", "prometheus", "grafana", "docling")
 # Behind the `monitoring` profile, off unless EMBABEL_MONITORING is on (#112).
 MONITORING_SERVICES = ("prometheus", "grafana")
@@ -219,8 +219,9 @@ LOCAL_EMBEDDING_MODEL = "docker.io/ai/qwen3-embedding:0.6B-F16"
 def core_services(mode: str) -> tuple[str, ...]:
     """MODE_CORE, adjusted for the graph engine. `compose up <name>` force-activates
     a service even when an overlay parks it behind a profile, so the bring-up list
-    itself must know the engine: FalkorDB swaps the graph service, MEMORY brings
-    none at all — the engine lives inside the app."""
+    itself must know the engine: FalkorDB swaps the graph service, EMBABEL brings
+    none at all — the engine lives inside the server, and naming neo4j here would
+    start the very container the overlay parked."""
     engine = graph_engine()
     base = MODE_CORE[mode]
     if engine == "NEO4J":
@@ -306,13 +307,14 @@ def refresh_floating_images(mode: str, services: tuple[str, ...] | list[str]) ->
 
 
 def graph_overlay_file(mode: str) -> str | None:
-    """The engine overlay for this mode, or None for the default engine.
-    One file per mode per engine — see the note in the files."""
+    """The engine overlay for this mode, or None for Neo4j, which is the composition
+    itself. One file per mode per engine — see the note in the files. MEMORY reads as
+    EMBABEL by now, so an install that still says MEMORY gets the same file."""
     engine = graph_engine()
     if engine == "FALKORDB":
         return f"graph-falkordb-{mode}.yml"
     if engine == "EMBABEL":
-        return f"graph-memory-{mode}.yml"
+        return f"graph-embabel-{mode}.yml"
     return None
 
 
@@ -547,7 +549,10 @@ def service_container(service: str, stopped: bool = False) -> str | None:
     names = run.stdout.split() if run and run.returncode == 0 else []
     return names[0] if names else None
 def find_graph_container() -> str | None:
-    return service_container("neo4j")
+    """The graph's own container, or None — always None on the Embabel engine, whose
+    graph is inside the server."""
+    service = {"NEO4J": "neo4j", "FALKORDB": "falkordb"}.get(graph_engine())
+    return service_container(service) if service else None
 def _answers(base: str) -> bool:
     """Does the door answer at all? Any HTTP status counts — 401 is an answer."""
     try:

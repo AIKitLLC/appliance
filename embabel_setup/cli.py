@@ -137,17 +137,17 @@ def resolve_instance(args) -> int:
 
 
 def _pinned(args) -> int:
-    """Pin the chosen instance's graph engine, if it predates the pin.
+    """Pin what the chosen instance runs on, where its .env does not say yet.
 
-    HERE because every verb comes through here, and an install made before the engine
+    HERE because every verb comes through here, and an install made before a choice
     was written down must be pinned before anything starts its containers — `upgrade`
     and `up` above all, but the first verb of a new CLI is the earliest moment there is.
-    Only ever pins an install that exists (see pin_graph_engine); choosing for a new
+    Only ever pins an install that exists (see pins.pin_install); choosing for a new
     one is setup's. Not for the verbs that describe the command rather than an
     appliance, which have no business writing anybody's settings.
     """
     if args.command not in ("instances", "where", "completion"):
-        s.pin_graph_engine(creating=False)
+        s.pin_install(creating=False)
     return 0
 
 

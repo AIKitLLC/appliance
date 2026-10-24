@@ -1,48 +1,31 @@
-# The in-process graph engine — composed in ONLY when somebody asks for it:
-#
-#   GRAPH_TYPE=MEMORY in .env
-#
-# EXPERIMENTAL. The appliance's graph moves INSIDE the app process: no graph
-# container at all, the smallest footprint the appliance can have. The engine
-# journals every write to a file on the same /data volume that holds the world,
-# so the world and its graph are one backup unit and one restore unit.
-#
-# The same overlay posture as graph-falkordb-*.yml: the default appliance is
-# Neo4j and stays byte-identical when this file is absent from the composition.
-# Composed in, it reconfigures the app and parks the neo4j service behind a
-# profile the composition never activates — no service is added, one is idled.
-#
-# THE ENGINES DO NOT SHARE DATA. The journal, the Neo4j volume and the FalkorDB
-# volume are three separate stores; switching engines is choosing which graph
-# you are talking to. Switch back and your old graph is still there.
-#
-# HONEST LIMITS: the Virtual Cypher surface (views, queries, materialization)
-# runs at full conformance on this engine, but subsystems that speak the bolt
-# wire protocol directly cannot reach an in-process store yet — chat history
-# persistence among them. Durability is the journal's fsync posture:
-# VC_MEMORY_FSYNC=everysec (default) bounds loss at about a second of writes;
-# =always fsyncs per statement.
+# The Embabel graph engine under its old name, MEMORY. Kept for one run: `embabel
+# upgrade` starts with the CLI that was installed, which composes this file in for an
+# appliance whose .env says MEMORY. Everything below the header is graph-embabel-me.yml,
+# kept identical by scripts/check-graph-engine.py — edit that file, then copy it here.
 services:
 
   assistant:
     environment:
-      # GRAPH_TYPE selects the engine inside the app (MemoryEngineConfiguration
-      # in the assistant). DRIVINE_GRAPH_TYPE stays NEO4J because the Drivine
-      # layer has no MEMORY member to bind — it boots lazily inert against a
-      # host that is never dialed, the same parked stance as this overlay's
-      # neo4j service.
-      - GRAPH_TYPE=MEMORY
-      - DRIVINE_GRAPH_TYPE=NEO4J
-      - VC_MEMORY_JOURNAL=/data/graph/memory.journal
-      - VC_MEMORY_FSYNC=${VC_MEMORY_FSYNC:-everysec}
-      # Drivine's schema startup runner would dial the wire graph and fail the
-      # application; the engine applies its own constraints from the journal.
-      - DRIVINE_SCHEMA_ENABLED=false
-    # No graph service to wait for: the graph starts when the app does.
+      # The engine, by its own name: an install whose .env says MEMORY gets the same one.
+      # The server types Drivine's datasource for it, so Drivine's repositories and schema
+      # catalogs run over the engine rather than against a Neo4j that is not there.
+      - GRAPH_TYPE=EMBABEL
+      # The store and where it is, which .env names for every install (embabel_setup/
+      # pins.py): a new one is written `sqlite`, one made before SQLite was the server's
+      # default is written whichever store its volume holds. These fallbacks are for the
+      # run before that — an upgrade's, by the CLI that was installed — and are what an
+      # Embabel install ran on until then: the journal-file store, on the data volume.
+      # They do not change; a new choice is a new value in pins.py.
+      - VC_EMBABEL_STORE=${VC_EMBABEL_STORE:-snapshot}
+      - VC_EMBABEL_JOURNAL=${VC_EMBABEL_JOURNAL:-/data/graph/memory.journal}
+      - GRAPH_EMBABEL_SQLITE_PATH=${GRAPH_EMBABEL_SQLITE_PATH:-/data/graph/graph.sqlite}
+      # always | everysec | off. everysec bounds a crash's loss at about a second of writes.
+      - VC_EMBABEL_FSYNC=${VC_EMBABEL_FSYNC:-${VC_MEMORY_FSYNC:-everysec}}
+    # No graph service to wait for: the graph starts when the server does.
     depends_on: !override []
 
-  # Parked, not removed: assigning a profile the composition never activates keeps
-  # the default graph out of this run without editing infra.yml. Its volume — and
-  # your Neo4j data — remain exactly where they were.
+  # Parked, not removed: a profile the composition never activates keeps Neo4j out of
+  # this run without editing infra.yml. On an appliance that used to run Neo4j, its
+  # volume — and that graph — stay exactly where they were.
   neo4j:
-    profiles: ["parked-by-memory"]
+    profiles: ["parked-by-embabel"]

@@ -9,13 +9,14 @@ the jar, and works with the container stopped.
 from __future__ import annotations
 import json
 import os
+import re
 import struct
 import subprocess
 import zlib
 
 from .core import APPLIANCE_DIR
 from .dockerlib import MODE_SERVICE, _compose, _docker, backup_mode, find_mode_container, service_container
-from .settings import compose_project, source_ref, source_repo
+from .settings import compose_project, env_file_value, graph_engine, source_ref, source_repo
 
 # ── what is actually running ────────────────────────────────────────────────
 #
@@ -222,14 +223,21 @@ def appliance_versions(mode: str | None = None) -> dict:
         "neo4j": image_identity(neo4j_image() or ""),
     }
 def neo4j_image() -> str | None:
-    """Pinned in the tracked compose files rather than in .env, so the CHECKOUT
-    is its version — but read it rather than restating it here."""
+    """The Neo4j this install runs, or None on an engine that has no Neo4j. Its own
+    container first; else the version .env pins, else the one infra.yml falls back to —
+    read rather than restated here, so the CHECKOUT stays its version."""
+    if graph_engine() != "NEO4J":
+        return None
     container = service_container("neo4j", stopped=True)
     run = _docker("inspect", container, "--format", "{{.Config.Image}}", timeout=15) if container else None
     if run and run.returncode == 0 and run.stdout.strip():
         return run.stdout.strip()
+    pinned = os.environ.get("NEO4J_VERSION") or env_file_value("NEO4J_VERSION")
+    if pinned:
+        return f"neo4j:{pinned}"
     with open(os.path.join(APPLIANCE_DIR, "infra.yml")) as f:
         for line in f:
-            if line.strip().startswith("image: neo4j:"):
-                return line.split("image:", 1)[1].strip()
+            found = re.search(r"image:\s*neo4j:\$\{NEO4J_VERSION:-([^}]+)\}", line)
+            if found:
+                return f"neo4j:{found.group(1)}"
     return None
