@@ -94,10 +94,11 @@ def phone_home_on() -> bool:
     return value in ("1", "true", "yes", "on")
 
 
-# The opt-in SQL endpoint (world-sql): a Postgres-wire surface onto the world for
-# BI, dbt and notebooks. OFF by default — it is a power-user surface, and a default
-# install should not open a second port nobody asked for. Enabling it turns on the
-# `world-sql` compose profile (see dockerlib.compose_env).
+# The SQL door: the Postgres wire protocol onto the world, for BI, dbt and notebooks,
+# served by the server itself (GRAPH_SQL_ENABLED, which both compose files set from
+# this). ON unless .env says otherwise — loopback only, and behind the same sign-in as
+# Bolt, so it opens nothing the HTTP port does not. The name is the one the opt-in
+# sidecar used, so an install that said --no-sql to that is still off.
 SQL_VAR = "EMBABEL_SQL"
 
 
@@ -108,8 +109,10 @@ def _switched_on(var: str) -> bool:
 
 
 def sql_enabled() -> bool:
-    """Whether the SQL endpoint runs alongside the worlds mode. False unless .env says true."""
-    return _switched_on(SQL_VAR)
+    """Whether the server's SQL door listens. True unless .env says false — the words
+    Spring reads as false, since the server is what decides."""
+    value = (os.environ.get(SQL_VAR) or env_file_value(SQL_VAR) or "").strip().lower()
+    return value not in ("0", "false", "no", "off")
 
 
 # Prometheus and Grafana: OFF by default (embabel-worlds/appliance#112). Together they
@@ -334,6 +337,7 @@ PORT_OFFSETS = {
     "OPEN_WEBUI_PORT": 7,
     "WORLDS_BOLT_PORT": 8,            # Bolt: Neo4j Browser and drivers, a world or the graph
     "WORLDS_PERSISTED_BOLT_PORT": 9,  # Bolt: persisted mode, the user's own Cypher database
+    "WORLDS_SQL_PORT": 10,            # SQL: the Postgres wire protocol, served by the server
 }
 # Instance 24 would land on 11434, which is Ollama's — and the compose files
 # talk to Ollama there. A ceiling nobody will reach, stated so it cannot be hit

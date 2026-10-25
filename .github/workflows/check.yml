@@ -30,9 +30,9 @@ jobs:
         run: python3 -m compileall -q embabel_setup scripts *.py
       - name: The command answers
         run: ./embabel --help > /dev/null && ./embabel version --help > /dev/null
-      - name: Copy, modules, timeouts, agents, shim, ports, instances, tokens, embeddings, memory, trust, health checks, installer parity, trial terms, graph engine
+      - name: Copy, modules, timeouts, agents, shim, ports, instances, tokens, embeddings, memory, trust, health checks, installer parity, trial terms, graph engine, SQL door
         run: |
-          for check in check-copy check-modules check-complete check-agents check-shim check-port-allocation check-compose-project check-uninstall-token check-embeddings-role check-memory-sizing check-trust check-healthcheck-env check-installer-parity check-trial-terms check-guides check-graph-engine; do
+          for check in check-copy check-modules check-complete check-agents check-shim check-port-allocation check-compose-project check-uninstall-token check-embeddings-role check-memory-sizing check-trust check-healthcheck-env check-installer-parity check-trial-terms check-guides check-graph-engine check-sql-door; do
             echo "== $check"
             python3 "scripts/$check.py"
           done

@@ -17,7 +17,7 @@ from .colour import dim
 from .core import APPLIANCE_DIR, ME_APP_DIR, SetupError
 from .settings import embabel_command, source_ref, source_repo
 
-from .dockerlib import _compose, _docker, find_mode_container, images_for, retire_monitoring
+from .dockerlib import _compose, _docker, find_mode_container, images_for, retire_monitoring, retire_sql_sidecar
 from .versions import image_identity, mode_image
 from .pins import pin_before_start
 
@@ -147,6 +147,7 @@ def upgrade(mode: str) -> dict:
     if _compose(mode, "up", "-d").returncode != 0:
         raise SetupError("docker compose up failed — see the output above.")
     retire_monitoring(mode)
+    retire_sql_sidecar()
     reclaimed = _remove_superseded(held, _image_ids(images_for(mode)))
     if reclaimed:
         notes.append(reclaimed)

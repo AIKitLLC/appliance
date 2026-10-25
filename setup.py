@@ -188,13 +188,13 @@ def main() -> int:
     sql = parser.add_mutually_exclusive_group()
     sql.add_argument(
         "--sql", dest="sql", action="store_true", default=None,
-        help="run the SQL endpoint (Postgres wire) so BI tools, dbt and notebooks can query "
-             "this world as tables — Metabase, Grafana, DuckDB, psql. Written to .env as "
-             "EMBABEL_SQL; off unless asked for",
+        help="serve SQL (the Postgres wire protocol) so BI tools, dbt and notebooks can query "
+             "this world as tables — Metabase, Grafana, DuckDB, psql. The server does this by "
+             "default; this undoes an earlier --no-sql. Written to .env as EMBABEL_SQL",
     )
     sql.add_argument(
         "--no-sql", dest="sql", action="store_false", default=None,
-        help="do not run the SQL endpoint (the default)",
+        help="turn the server's SQL door off: no listener on the SQL port",
     )
     parser.add_argument(
         "--ignore-env",
@@ -273,13 +273,14 @@ def main() -> int:
         # the variable exists, and an upgrade that silently undid it made it a trap.
         remember_source()
         ensure_realms_dir(mode, args.realms)
-        # --sql / --no-sql, persisted to .env BEFORE the containers start (compose reads the
-        # world-sql profile when it creates them). Unset leaves whatever .env already says — off
-        # by default. No prompt: the SQL endpoint is a deliberate, named choice, not a step
-        # every install walks through.
+        # --sql / --no-sql, persisted to .env BEFORE the containers start (compose hands it
+        # to the server as GRAPH_SQL_ENABLED when it creates them). Unset leaves whatever .env
+        # already says — on, when it says nothing. No prompt: the door costs a port on
+        # loopback and asks for the same sign-in as everything else, so turning it off is a
+        # deliberate, named choice rather than a step every install walks through.
         if args.sql is not None:
             set_env_var(SQL_VAR, "true" if args.sql else "false",
-                        why=("Whether the SQL endpoint (world-sql) runs — the Postgres surface for",
+                        why=("Whether the server's SQL door listens — the Postgres surface for",
                              "BI, dbt and notebooks. Set by --sql / --no-sql; edit to change."))
 
         if args.fresh:

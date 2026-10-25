@@ -29,7 +29,7 @@ from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
 from .pins import pin_before_start
 from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred_services,
-                        retire_monitoring,
+                        retire_monitoring, retire_sql_sidecar,
                         announce_github_token, appliance_containers, compose_command, compose_env,
                         find_mode_container, refresh_floating_images, running_modes,
                         stray_sandbox_containers, other_running_appliances,
@@ -702,6 +702,7 @@ def ensure_mode(mode: str) -> bool:
             "nothing installed and works even when that command does not exist yet."
             )
         retire_monitoring(mode)
+        retire_sql_sidecar()
         print()
         return False
     print(f"  Starting the {mode} mode — pulling what it needs to answer.\n")
@@ -727,6 +728,7 @@ def ensure_mode(mode: str) -> bool:
             "nothing installed and works even when that command does not exist yet."
         )
     retire_monitoring(mode)
+    retire_sql_sidecar()
     print()
     start_deferred(mode)
     return True

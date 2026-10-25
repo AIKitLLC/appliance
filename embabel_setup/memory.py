@@ -36,7 +36,7 @@ MIB = 1024 ** 2
 GIB = 1024 ** 3
 
 # The VM's own kernel and dockerd, plus everything left uncapped: the console's nginx,
-# code sandboxes the app launches, world-sql when enabled.
+# code sandboxes the app launches.
 RESERVE_BYTES = GIB // 2
 
 # Measured idle at 249MB (grafana) and 90MB (prometheus). Fixed, because neither
