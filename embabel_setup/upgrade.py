@@ -19,6 +19,7 @@ from .settings import embabel_command, source_ref, source_repo
 
 from .dockerlib import _compose, _docker, find_mode_container, images_for, retire_monitoring
 from .versions import image_identity, mode_image
+from .bolt import ensure_public_host
 from .pins import pin_before_start
 
 def _head() -> str | None:
@@ -144,6 +145,8 @@ def upgrade(mode: str) -> dict:
     # The images are new and nothing has been recreated yet — the moment to pin a row
     # that waits on the image, before the first boot on it (pins.pin_before_start).
     pin_before_start(mode)
+    # And the name Bolt is advertised by, which compose reads from .env (see bolt.py).
+    ensure_public_host(mode)
     if _compose(mode, "up", "-d").returncode != 0:
         raise SetupError("docker compose up failed — see the output above.")
     retire_monitoring(mode)

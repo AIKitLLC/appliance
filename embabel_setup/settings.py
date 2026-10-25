@@ -39,12 +39,22 @@ def api_address(base: str) -> str:
     return base.split("://", 1)[-1].rstrip("/")
 
 
+# The host Bolt clients on other machines dial; bolt.ensure_public_host writes it.
+BOLT_HOST_VAR = "BOLT_PUBLIC_HOST"
+
+
+def bolt_public_host() -> str:
+    """The host About, the routing table and these URLs name: localhost on an install not yet given one."""
+    return env_file_value(BOLT_HOST_VAR) or "localhost"
+
+
 def surface_urls() -> dict:
     """Every address this instance publishes, by the name a person uses for it.
 
     `graph` is Neo4j Browser, so only an appliance that runs Neo4j has one. On the
     Embabel engine the graph is inside the server and there is no browser to open;
-    `bolt` is then the server's own Bolt port, which Neo4j's tools connect to."""
+    `bolt` is then the server's own Bolt port, which Neo4j's tools connect to, named
+    by the host other machines reach it by (BOLT_PUBLIC_HOST)."""
     p = ports_for(port_base())
     urls = {"me": f"http://localhost:{p['ASSISTANT_PORT']}",
             "worlds": f"http://localhost:{p['WORLDS_PORT']}",
@@ -55,7 +65,7 @@ def surface_urls() -> dict:
         urls["graph"] = f"http://localhost:{p['NEO4J_BROWSER_PORT']}"
         urls["bolt"] = f"bolt://localhost:{p['NEO4J_BOLT_PORT']}"
     elif graph_engine() == "EMBABEL":
-        urls["bolt"] = f"bolt://localhost:{p['WORLDS_BOLT_PORT']}"
+        urls["bolt"] = f"bolt://{bolt_public_host()}:{p['WORLDS_BOLT_PORT']}"
     return urls
 # Machine-local configuration: keys, timezone, world template, realms directory.
 # Gitignored, and removed by --uninstall — which is the difference between that
