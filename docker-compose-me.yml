@@ -84,8 +84,11 @@ services:
       # remapped port leaves every code-mode call dialling nothing. Moving the
       # appliance to another port therefore moves both sides together.
       - SERVER_PORT=${ASSISTANT_PORT:-11042}
-      # What a `neo4j://` client is told to reconnect to: the host's port, not the container's.
+      # What a `neo4j://` client is told to reconnect to, and what About shows: the host's
+      # ports, not the container's. Each port says so for itself, because the server would
+      # otherwise derive the persisted one from the container port, 7688.
       - GRAPH_BOLT_ADVERTISED_ADDRESS=localhost:${WORLDS_BOLT_PORT:-11050}
+      - GRAPH_BOLT_PERSISTED_ADVERTISED_ADDRESS=localhost:${WORLDS_PERSISTED_BOLT_PORT:-11051}
       # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
       # guides.json from the repository this checkout follows and indexes what is new
       # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
