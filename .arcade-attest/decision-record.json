@@ -1,0 +1,5 @@
+{"id":"ADR-APPLIANCE-001","mode":"advisory","repo":"AIKitLLC/appliance","status":"accepted","version":1,
+ "predicates":[{"severity":"fail","type":"no_new_smells"},
+  {"params":{"max":5},"severity":"warn","type":"max_responsibility_shifts"},
+  {"params":{"max":450},"severity":"warn","type":"component_entity_cap"}],
+ "scoring":{"profile":"oss_maintainer"}}
