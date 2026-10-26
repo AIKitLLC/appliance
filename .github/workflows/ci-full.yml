@@ -1,0 +1,99 @@
+# Full CI (AIKitLLC fork). The appliance is Python stdlib + shell (installer/CLI)
+# plus a Node 22 app (me-app); there is no JVM build. Jobs:
+#   python   - compile all modules, CLI smoke test, every scripts/check-*.py (3.12, pip cache)
+#   me-app   - npm ci, typecheck, test, build (Node 22, npm cache)
+#   gate     - ArcadeAttest architecture decision gate (pinned SHA), evidence artifact
+# Agent harness: not applicable in CI - running agents needs the full docker compose
+# stack (~15GB of images) and a model-provider key.
+name: CI (full)
+on:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-full-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  DECISION_RECORD: .arcade-attest/decision-record.json
+  LANGUAGE: python
+  ENFORCE_BLOCK: "true"
+  ATTEST_INSTALL: "arcade-attest[api] @ git+https://github.com/arcade-red-team/arcade-attest@378037292c77a8d09e8f5ef09c3602ed8741d150"
+jobs:
+  python:
+    name: Python 3.12 - compile, CLI smoke, check scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python3 -m compileall -q embabel_setup scripts *.py
+      - run: ./embabel --help > /dev/null && ./embabel version --help > /dev/null
+      - name: All scripts/check-*.py
+        run: |
+          fail=0
+          for f in scripts/check-*.py; do
+            echo "== $f"; python3 "$f" || { echo "::error::$f failed"; fail=1; }
+          done
+          exit $fail
+
+  me-app:
+    name: me-app (Node 22) - typecheck, test, build
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: me-app } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: me-app/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  decision-gate:
+    name: ArcadeAttest decision gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: .arcade-attest/decision-record.json }
+      - run: pip install "${ATTEST_INSTALL}"
+      - name: Resolve base/head and materialize trees
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"; head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"; head="${{ github.sha }}"
+            if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+              base=$(git merge-base "origin/${{ github.event.repository.default_branch }}" "$head")
+            fi
+          fi
+          echo "BASE_SHA=$base" >> "$GITHUB_ENV"; echo "HEAD_SHA=$head" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/base" "$RUNNER_TEMP/head" .attest-out
+          git archive "$base" | tar -x -C "$RUNNER_TEMP/base"
+          git archive "$head" | tar -x -C "$RUNNER_TEMP/head"
+      - name: Evaluate
+        id: evaluate
+        run: |
+          set +e
+          arcade-attest evaluate --base "$RUNNER_TEMP/base" --head "$RUNNER_TEMP/head" \
+            --record "$DECISION_RECORD" --language "$LANGUAGE" --out .attest-out/evidence-pack.json > /dev/null
+          code=$?; set -e
+          verdict=$(python3 -c "import json;print(json.load(open('.attest-out/evidence-pack.json'))['verdict'])")
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          arcade-attest payload --pack .attest-out/evidence-pack.json --base-commit "$BASE_SHA" --head-commit "$HEAD_SHA" > .attest-out/eas-payload.json
+          arcade-attest render-comment --pack .attest-out/evidence-pack.json --out .attest-out/comment.md
+          cat .attest-out/comment.md >> "$GITHUB_STEP_SUMMARY"
+          echo "verdict=$verdict (cli exit $code)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: arcade-attest-evidence, path: .attest-out/, if-no-files-found: ignore }
+      - name: Enforce
+        if: always()
+        run: |
+          echo "verdict=${{ steps.evaluate.outputs.verdict }} (llm_in_verdict: false)"
+          if [ "${{ steps.evaluate.outputs.verdict }}" = BLOCK ] && [ "$ENFORCE_BLOCK" = true ]; then exit 1; fi
