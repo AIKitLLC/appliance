@@ -2,13 +2,15 @@
 """SQL is the server's own door, on by default, in the instance's port block.
 
 The appliance used to run SQL as an opt-in sidecar on a fixed host port. The server
-serves it itself now, for every install, and three things keep that true:
+serves it itself now, for every install, and four things keep that true:
 
 - Both modes' server services publish the door on WORLDS_SQL_PORT, whose compose
   fallback is the default block's port. A fixed port worked while SQL was opt-in;
   on by default, it would stop the second appliance on a machine from starting.
 - EMBABEL_SQL reaches the server as GRAPH_SQL_ENABLED, unset meaning on, so an
   install that said --no-sql to the sidecar keeps SQL off.
+- The server advertises the door as localhost on that same host port, which is
+  what its About names: localhost, because the port is published on loopback only.
 - The sidecar is gone from the compose files and from the profiles the CLI turns
   on, and `up` removes the container an older install still has, which would
   otherwise go on answering on the old port.
@@ -63,6 +65,8 @@ for path, server in (("docker-compose-worlds.yml", "worlds"), ("docker-compose-m
           f"{path}: {server} does not publish the SQL door on WORLDS_SQL_PORT (fallback {port})")
     check("- GRAPH_SQL_ENABLED=${EMBABEL_SQL:-true}" in lines,
           f"{path}: {server} does not take GRAPH_SQL_ENABLED from EMBABEL_SQL, on when unset")
+    check(f"- GRAPH_SQL_ADVERTISED_ADDRESS=localhost:${{WORLDS_SQL_PORT:-{port}}}" in lines,
+          f"{path}: {server} does not advertise the SQL door as localhost on WORLDS_SQL_PORT (fallback {port})")
     others = [name for name, body in found.items() if name != server and any(":15432" in b for b in body)]
     check(not others, f"{path}: something besides the server publishes the SQL port: {others}")
 
