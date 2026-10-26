@@ -102,6 +102,10 @@ services:
       # The SQL door's switch. EMBABEL_SQL is the name .env has always used for SQL, so an
       # install that said --no-sql keeps it off; unset, the server's default — on — stands.
       - GRAPH_SQL_ENABLED=${EMBABEL_SQL:-true}
+      # Where About tells people the SQL door is: the host port, not the container's. It is
+      # localhost rather than BOLT_PUBLIC_HOST because the port is published on 127.0.0.1
+      # only (the password arrives in clear text), so no other machine could dial it.
+      - GRAPH_SQL_ADVERTISED_ADDRESS=localhost:${WORLDS_SQL_PORT:-11052}
       # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
       # guides.json from the repository this checkout follows and indexes what is new
       # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
