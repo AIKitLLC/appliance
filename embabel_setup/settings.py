@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import re
+import socket
 
 from .core import APPLIANCE_DIR, MODE_COMPOSE, SetupError
 
@@ -527,6 +528,27 @@ def _docker_port_bases() -> set[int]:
     return used
 
 
+def _port_taken(port: int) -> bool:
+    """Whether something on this machine already listens on [port], on any address.
+
+    Compose publishes on 0.0.0.0, so a bind there is the question docker will ask; a
+    loopback-only listener is caught too, since the wildcard bind collides with it."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("0.0.0.0", port))
+        except OSError:
+            return True
+    return False
+
+
+def _block_has_listener(base: int) -> bool:
+    """Whether any port of the block at [base] is already held by a process outside
+    Docker. The instances and Docker's own bindings say which blocks appliances use;
+    neither sees a dev server or a proxy left running on the host, and a block
+    allocated over one installs, then fails at `up` on the port it holds."""
+    return any(_port_taken(base + offset) for offset in range(PORT_BLOCK))
+
+
 def free_port_base() -> int:
     """The next unused block. Bases in use are read from the instances that
     exist rather than counted, so removing the second of three instances frees
@@ -536,7 +558,7 @@ def free_port_base() -> int:
     used.add(DEFAULT_PORT_BASE)  # reserved for the default instance, always
     for n in range(MAX_INSTANCES + 1):
         candidate = DEFAULT_PORT_BASE + n * PORT_BLOCK
-        if candidate not in used:
+        if candidate not in used and not _block_has_listener(candidate):
             return candidate
     raise SetupError(
         f"All {MAX_INSTANCES + 1} port blocks are in use. The next one would collide "

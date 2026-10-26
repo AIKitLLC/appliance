@@ -45,13 +45,24 @@ with tempfile.TemporaryDirectory() as root:
     try:
         settings.APPLIANCE_DIR = root
         settings.use_instance("new-review")
-        with patch.object(dockerlib, "_docker", side_effect=docker):
+        # The host's own listeners are a separate question, answered below; this
+        # machine's real ports must not decide what the instance check sees.
+        with patch.object(dockerlib, "_docker", side_effect=docker), \
+                patch.object(settings, "_port_taken", return_value=False):
             actual = settings.free_port_base()
             assert actual == 11090, (
                 f"allocator chose {actual} instead of preserving the occupied blocks"
+            )
+        # A process outside Docker holding one port of the next free block (a proxy on
+        # 11099, its persisted-Bolt offset) moves the allocation to the block after it.
+        with patch.object(dockerlib, "_docker", side_effect=docker), \
+                patch.object(settings, "_port_taken", side_effect=lambda port: port == 11099):
+            actual = settings.free_port_base()
+            assert actual == 11106, (
+                f"allocator chose {actual}, a block a host process already listens in"
             )
     finally:
         settings.APPLIANCE_DIR = original_dir
         settings.use_instance(original_instance)
 
-print("ok: cross-checkout appliance port blocks remain reserved")
+print("ok: cross-checkout appliance port blocks, and blocks a host process listens in, remain reserved")
