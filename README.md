@@ -253,7 +253,10 @@ An appliance owns **sixteen consecutive ports**, `EMBABEL_PORT_BASE` + offset:
 | +11…+15 | 11053–11057 | — | spare, so the next service does not need a new block |
 | — | — | docling | PDF/DOCX/PPTX/XLSX → structured markdown, internal only |
 
-Everything binds to `127.0.0.1` — reachable from your machine, not from the network.
+Everything binds to `127.0.0.1` — reachable from your machine, not from the network —
+except the two Bolt ports, 11050 and 11051. They are there to be dialled by Neo4j Browser and
+the drivers from any machine, and every Bolt session signs in with an appliance account or an
+API key. `BOLT_BIND=127.0.0.1` in `.env` keeps them on this machine.
 
 **A second appliance takes the next block** (11058–11073), and a third the one
 after. See [Running more than one](#running-more-than-one). The ceiling is 24
@@ -266,7 +269,7 @@ appliance talks to.
 |---|---|
 | assistant | the account you created during setup — see [Who can log in](#who-can-log-in) |
 | neo4j (a Neo4j appliance) | user `neo4j`, password `NEO4J_PASSWORD` (default `embabel-assistant`). The connect form comes pre-filled with `neo4j://localhost:11046` — Bolt on its host-published port; the usual 7687 is not published. Leave it as it is. If the browser remembers an *older* connect URL (it saves one per origin, and a stale one silently points you at a different database), open **<http://localhost:11045/browser/?dbms=neo4j://neo4j@localhost:11046&db=neo4j>** to force the right one, or run `:server disconnect` first |
-| Bolt (11050, 11051) | your appliance user name and password, or any user name with an API key (`emb_…`) as the password. In Neo4j Browser (on a Neo4j appliance, the one on 11045 will do; an Embabel appliance has none of its own), connect to `bolt://localhost:11050`, then `:use world` for your world through Virtual Cypher or `:use graph` for the engine's graph (administrators). `bolt://localhost:11051` is persisted mode, your own Cypher database. Needs an image with the Bolt server |
+| Bolt (11050, 11051) | your appliance user name and password, or any user name with an API key (`emb_…`) as the password. In Neo4j Browser (on a Neo4j appliance, the one on 11045 will do; an Embabel appliance has none of its own), connect to the Bolt URL the console's About window shows (`bolt://<this machine>:11050`), then `:use world` for your world through Virtual Cypher or `:use graph` for the engine's graph (administrators). `…:11051` is persisted mode, your own Cypher database. Needs an image with the Bolt server |
 | SQL (11052) | the same as Bolt: your appliance user name and password, or an API key as the password. `psql -h localhost -p 11052 -U <you> -d world`; `\dt` lists your world's views and entities as tables. See [Reading your world from other tools](docs/guide/clients.md#sql). Needs a server image with the SQL door — `embabel up` says when yours predates it |
 | open-webui | create an account on first visit; the first account is the admin |
 | grafana | no login — anyone who can reach 11047 is admin, which is safe only because it binds to `127.0.0.1` |
@@ -412,11 +415,20 @@ world's `data/secrets.env`. Use `.env` for things the whole server needs.
 | `OPEN_WEBUI_PORT` | `11049` |
 | `WORLDS_BOLT_PORT` | `11050` |
 | `WORLDS_PERSISTED_BOLT_PORT` | `11051` |
+| `BOLT_BIND` | `0.0.0.0` — the interface the two Bolt ports publish on |
+| `BOLT_PUBLIC_HOST` | written by `embabel up`: the name other machines dial, shown in About |
 | `WORLDS_SQL_PORT` | `11052` |
 | `GRAFANA_PORT` | `11047` |
 | `PROMETHEUS_PORT` | `11048` |
 
-All bind to `127.0.0.1`. Read [Who can log in](#who-can-log-in) before changing that.
+All bind to `127.0.0.1` but the Bolt ports, which bind to `BOLT_BIND`. Read
+[Who can log in](#who-can-log-in) before changing either.
+
+**The Bolt URL other machines use** names `BOLT_PUBLIC_HOST`. `embabel up` writes it once:
+the host of the public base URL when that names a real host, else this machine's own name
+when it resolves to an address the network can use, else `localhost`, which it says. The
+server advertises that name to every `neo4j://` driver as where to reconnect, and the
+console's About window shows it, so set it by hand if the machine is reached by another name.
 
 ## Optional services
 
@@ -486,7 +498,7 @@ Until setup completes, **nobody** can sign in, and the setup API itself requires
 from the container log. Once it completes, that API returns `410 Gone` permanently: there
 is no second chance to create an administrator, with or without the token.
 
-Ports still bind to `127.0.0.1` by default. Change that deliberately.
+Ports still bind to `127.0.0.1` by default, the Bolt ports excepted (see [Ports](#ports)). Change that deliberately.
 
 ### Forgot the password?
 

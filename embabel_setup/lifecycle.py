@@ -27,6 +27,7 @@ from .agents import (MCP_SERVER_NAME, install_path_entry, remove_path_entry, she
 from .colour import MIDDOT, TICK, bold, dim, good, heading, url, warn
 from .core import (APPLIANCE_DIR, BOOT_WAIT_SECONDS, MODE_CORE,
                    MODE_SERVICE, OVERRIDE_FILE, SetupError, prompt)
+from .bolt import ensure_public_host
 from .pins import pin_before_start
 from .dockerlib import (DEFERRED_WHY, _compose, _docker, core_services, deferred_services,
                         retire_monitoring, retire_sql_sidecar,
@@ -693,6 +694,7 @@ def ensure_mode(mode: str) -> bool:
         # will not pull — printed docker's error and then let setup carry on as though
         # the appliance were up. The run ended minutes later asking for a setup token
         # that no process had printed, with the real reason long scrolled away.
+        ensure_public_host(mode)
         run = _compose(mode, "up", "-d")
         if run.returncode != 0:
             raise SetupError(
@@ -715,6 +717,8 @@ def ensure_mode(mode: str) -> bool:
     # After the pull, before the containers exist: a new Embabel install's store is
     # pinned from the image that is about to run it (see pins.pin_before_start).
     pin_before_start(mode)
+    # And the name Bolt is advertised by, which compose reads from .env (see bolt.py).
+    ensure_public_host(mode)
     run = _compose(mode, "up", "-d", *core_services(mode))
     if run.returncode != 0:
         # The message names docker, because the failure is docker's and the reason is
