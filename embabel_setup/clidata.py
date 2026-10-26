@@ -415,9 +415,9 @@ def cmd_diagram(args) -> int:
     declarations on every read, so it cannot rot the way a drawn diagram does.
 
     It is rendered by world-graphql, the sidecar that also serves the world as GraphQL,
-    because the catalog it is drawn from lives there and in world-sql, not in this
-    installer. Mermaid text: paste it into a README, a wiki page or a pull request and
-    it renders; `--out` writes a .mmd file.
+    because the catalog it is drawn from lives there, not in this installer. Mermaid
+    text: paste it into a README, a wiki page or a pull request and it renders; `--out`
+    writes a .mmd file.
     """
     import base64
     import urllib.error

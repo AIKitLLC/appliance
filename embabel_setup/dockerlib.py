@@ -24,7 +24,7 @@ from .core import (
 from .memory import memory_env
 from .settings import (
     compose_project, configured_mode, embabel_command, env_file_value, env_path, graph_engine, instance,
-    monitoring_enabled, phone_home_on, port_base, ports_for, resume_command, sql_enabled, PHONE_HOME_ENDPOINT,
+    monitoring_enabled, phone_home_on, port_base, ports_for, resume_command, PHONE_HOME_ENDPOINT,
 )
 
 # Everything else, started AFTER the mode is up and reachable. None of it is a
@@ -170,10 +170,9 @@ def compose_env() -> dict:
     # Opt-in services are compose PROFILES, off unless enabled. Turning them on here —
     # in the environment compose runs with — rather than in .env keeps the compose files
     # pull-only and means a profile the operator set by hand is merged, not clobbered.
-    wanted = [name for name, on in (("world-sql", sql_enabled()), ("monitoring", monitoring_enabled())) if on]
-    if wanted:
+    if monitoring_enabled():
         profiles = [p.strip() for p in env.get("COMPOSE_PROFILES", "").split(",") if p.strip()]
-        env["COMPOSE_PROFILES"] = ",".join(profiles + [p for p in wanted if p not in profiles])
+        env["COMPOSE_PROFILES"] = ",".join(profiles if "monitoring" in profiles else [*profiles, "monitoring"])
     return env
 
 
@@ -199,6 +198,29 @@ def retire_monitoring(mode: str) -> None:
         _compose(mode, "rm", "--stop", "--force", *MONITORING_SERVICES, capture=True)
     except SetupError as e:
         print(dim(f"  Could not remove the monitoring containers ({e}); `{embabel_command('down')}` stops them."))
+
+
+# The SQL sidecar the server's own SQL door replaced. Gone from the compose files, so
+# compose no longer knows the service and only the labels find what an older install left.
+RETIRED_SQL_SERVICE = "world-sql"
+
+
+def retire_sql_sidecar() -> None:
+    """Remove the SQL sidecar an install from before the built-in door still runs.
+
+    Compose leaves a container whose service it no longer has, and this one would go
+    on answering SQL on the old port beside the server's door. It held nothing — it
+    forwarded each connection to the server — so removing it loses nothing. A server
+    image older than the door has no SQL until it is upgraded; print_sql_line says so.
+    """
+    container = service_container(RETIRED_SQL_SERVICE, stopped=True)
+    if not container:
+        return
+    run = _docker("rm", "--force", container, timeout=60)
+    if run is None or run.returncode != 0:
+        print(dim(f"  Could not remove the old SQL container {container}; `docker rm -f {container}` does."))
+    else:
+        print(dim(f"  Removed the old SQL container ({container}): the server serves SQL itself now."))
 
 
 def announce_github_token() -> None:

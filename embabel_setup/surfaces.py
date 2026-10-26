@@ -18,7 +18,10 @@ import sys
 
 from .colour import ARROW, MIDDOT, TICK, accent, bold, dim, heading, url
 from .core import APPLIANCE_DIR, ME_APP_DIR, prompt
-from .settings import embabel_command, console_url, instance, monitoring_enabled, sql_enabled, surface_urls
+from .dockerlib import find_mode_container
+from .settings import (SQL_VAR, embabel_command, console_url, instance, monitoring_enabled, port_base, ports_for,
+                       sql_enabled, surface_urls)
+from .versions import jar_holds
 from .words import name_the_instance, say
 
 # THE VERB, which every ending was missing.
@@ -82,15 +85,36 @@ def print_worlds_surfaces(base: str) -> None:
         dashboards=monitoring_line(),
         mcp="MCP servers    " + url(base + "/mcp/chat"),
         mcp_code="               " + url(base + "/mcp/code"))
-    # Only when the operator turned it on — an off endpoint is not a surface. Shown as a
-    # connection string because that is what a BI tool or `psql` actually wants; the
-    # credentials are the operator's own appliance login, forwarded per connection.
-    if sql_enabled():
-        port = os.environ.get("WORLDS_SQL_PORT", "15432")
-        print("  " + dim("SQL (Postgres)") + " " + url(f"postgresql://<user>@localhost:{port}/world")
-              + "  " + dim("(BI / dbt / notebooks)"))
+    print_sql_line("worlds")
     print()
     print_next()
+
+
+# What tells a server that serves SQL itself: the module that brings the door, which
+# arrived in the server's jar together with the setting that turns it on.
+SQL_DOOR_MARKER = "BOOT-INF/lib/graph-sql-"
+
+
+def print_sql_line(mode: str) -> None:
+    """Where SQL is, or why it is not there.
+
+    A connection string, because that is what a BI tool or `psql` actually wants; the
+    credentials are the operator's own appliance login. The image is asked, through the
+    running container, because a server older than the door ignores the switch and
+    publishes a port with nothing behind it — the old sidecar is gone, so the line says
+    what brings SQL back rather than handing out an address that refuses.
+    """
+    if not sql_enabled():
+        print("  " + dim("SQL (Postgres)") + " " + dim(f"off — {SQL_VAR}=true in .env, then {embabel_command('up')}"))
+        return
+    container = find_mode_container(mode)
+    if container and jar_holds(container, True, SQL_DOOR_MARKER) is False:
+        print("  " + dim("SQL (Postgres)") + " "
+              + dim(f"not in this server image — {embabel_command('upgrade')} brings the SQL door"))
+        return
+    port = ports_for(port_base())["WORLDS_SQL_PORT"]
+    print("  " + dim("SQL (Postgres)") + " " + url(f"postgresql://<user>@localhost:{port}/world")
+          + "  " + dim("(BI / dbt / notebooks)"))
 
 
 def monitoring_line() -> str:
@@ -115,6 +139,7 @@ def print_me_surfaces(base: str) -> None:
         start_here=accent(f"{ARROW} START HERE"),
         mcp="MCP servers    " + url(base + "/mcp/chat"),
         mcp_code="               " + url(base + "/mcp/code"))
+    print_sql_line("me")
     print()
     print_next()
 

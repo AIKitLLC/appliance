@@ -26,9 +26,11 @@ line in .env — even an empty one — is somebody's answer and is never rewritt
 
 NOT PINNED, on purpose, because nothing stored or provided moves when they change:
 image versions that are meant to move with the checkout over data they do not own
-(the server, the console, docling, the sandbox, world-sql), memory and pool sizing,
-ports, the Bolt server, phone-home (off unless .env says so, and a decision rather
-than a default), the MCP mode and role fallback, fsync posture, metric retention.
+(the server, the console, docling, the sandbox), memory and pool sizing, ports, the
+server's Bolt and SQL doors (surfaces over the world, on loopback, behind the same
+sign-in — on for every install, which is the decision), phone-home (off unless .env
+says so, and a decision rather than a default), the MCP mode and role fallback, fsync
+posture, metric retention.
 """
 
 from __future__ import annotations

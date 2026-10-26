@@ -147,7 +147,6 @@ def capacity():
 with patch("embabel_setup.capacity.docker_capacity", side_effect=capacity), \
         patch.object(memory, "chosen", return_value=None), \
         patch.object(dockerlib, "monitoring_enabled", return_value=False), \
-        patch.object(dockerlib, "sql_enabled", return_value=False), \
         patch.object(dockerlib, "github_token", return_value=None):
     env = dockerlib.compose_env()
     dockerlib.compose_env()
@@ -163,7 +162,6 @@ check(not set(dockerlib.MONITORING_SERVICES) & set(deferred_off),
 with patch("embabel_setup.capacity.docker_capacity", side_effect=capacity), \
         patch.object(memory, "chosen", return_value=None), \
         patch.object(dockerlib, "monitoring_enabled", return_value=True), \
-        patch.object(dockerlib, "sql_enabled", return_value=False), \
         patch.object(dockerlib, "github_token", return_value=None), \
         patch.dict(os.environ, {"COMPOSE_PROFILES": "openwebui"}):
     env_on = dockerlib.compose_env()

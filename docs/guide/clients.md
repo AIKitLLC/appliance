@@ -30,9 +30,10 @@ Three things are true of every door, and they are worth knowing before the detai
 | In Excel, Power BI, Power Apps or Salesforce | **OData** | OData 4 over HTTPS |
 | A Slack channel, a flow, or a service of your own | **Webhooks**: a saved view watched and its changes posted | HTTPS + JSON |
 
-The SQL, GraphQL and OData doors are sidecars: separate containers that run beside the
-appliance and read it over its own API. Nothing is installed into the appliance, and
-switching one off means not running it. Webhooks are part of the appliance.
+SQL and webhooks are part of the appliance: the server answers SQL itself, on by
+default. The GraphQL and OData doors are sidecars: separate containers that run beside
+the appliance and read it over its own API. Nothing is installed into the appliance for
+them, and switching one off means not running it.
 
 ## What every door shows
 
@@ -50,17 +51,15 @@ re-derived from the world's declarations on every read.
 ## SQL
 
 The SQL door speaks the Postgres wire protocol, so anything with a Postgres driver
-connects to it as if it were a database named `world`.
+connects to it as if it were a database named `world`. The appliance's server serves it,
+on port 11052 of the first appliance on a machine (the next one's is 16 higher, like
+every port in its block), bound to `127.0.0.1`. There is nothing to start:
 
 ```sh
-docker run --rm -p 15432:15432 --add-host=host.docker.internal:host-gateway \
-  -e APPLIANCE_BASE=http://host.docker.internal:11043 \
-  ghcr.io/embabel-worlds/world-sql
-
-psql -h 127.0.0.1 -p 15432 -U <your appliance user> -d world
+psql -h 127.0.0.1 -p 11052 -U <your appliance user> -d world
 ```
 
-The password is your appliance password; the door forwards it. Then:
+The password is your appliance password, or an API key. Then:
 
 ```sql
 \dt                                                -- every view and entity, as tables
@@ -74,6 +73,10 @@ appliance's own documentation: psql, JDBC, **Metabase**, **DuckDB** (`ATTACH` th
 and query it alongside local files), **dbt** with DuckDB, **Trino**, SQLAlchemy, Kestra,
 and **Postgres itself** through `postgres_fdw`, so a world becomes foreign tables in a
 database you already run.
+
+It is on unless you turn it off: `./setup.py --no-sql`, or `EMBABEL_SQL=false` in `.env`
+and then `embabel up`. A server image older than the door has no SQL at all; `embabel up`
+says so where the address would be, and `embabel upgrade` brings it.
 
 Two limits to know. A statement that would return more than the row cap, or run
 longer than the time budget, is refused with a message saying which limit and how to
@@ -204,8 +207,8 @@ change. Materialise it with a TTL, and the watch diffs one snapshot against the 
 
 ## Where the doors are
 
-The SQL, GraphQL and OData doors publish container images at
-`ghcr.io/embabel-worlds/world-sql`, `world-graphql` and `world-odata`, built for
-amd64 and arm64. Their source is in the embabel-worlds organisation; the shared
+The SQL door is in the appliance's server image. The GraphQL and OData doors publish
+container images at `ghcr.io/embabel-worlds/world-graphql` and `world-odata`, built
+for amd64 and arm64. Their source is in the embabel-worlds organisation; the shared
 piece — reading a world's catalog — is
 [world-catalog](https://github.com/embabel-worlds/world-catalog).

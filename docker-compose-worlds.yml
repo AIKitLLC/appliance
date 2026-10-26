@@ -78,6 +78,11 @@ services:
       # BOLT_BIND=127.0.0.1 in .env keeps them on this machine.
       - "${BOLT_BIND:-0.0.0.0}:${WORLDS_BOLT_PORT:-11050}:7687"
       - "${BOLT_BIND:-0.0.0.0}:${WORLDS_PERSISTED_BOLT_PORT:-11051}:7688"
+      # SQL, the Postgres wire protocol, for psql, JDBC, BI tools, dbt and postgres_fdw:
+      # the caller's world as tables, served from this JVM. On unless EMBABEL_SQL=false.
+      # In the port block, like Bolt, because it is on for every install now: a fixed
+      # host port would stop the second appliance on a machine from starting at all.
+      - "127.0.0.1:${WORLDS_SQL_PORT:-11052}:15432"
     # Realm credentials, without a compose edit per realm. A realm names the key it
     # needs (`token-env:` in its apis.yml) and you put that key in secrets.env, beside
     # this file — every line of it enters the container as-is. The alternative was a
@@ -95,6 +100,9 @@ services:
       # one other machines can dial, written into .env by `embabel up` (embabel_setup/bolt.py).
       - GRAPH_BOLT_ADVERTISED_ADDRESS=${BOLT_PUBLIC_HOST:-localhost}:${WORLDS_BOLT_PORT:-11050}
       - GRAPH_BOLT_PERSISTED_ADVERTISED_ADDRESS=${BOLT_PUBLIC_HOST:-localhost}:${WORLDS_PERSISTED_BOLT_PORT:-11051}
+      # The SQL door's switch. EMBABEL_SQL is the name .env has always used for SQL, so an
+      # install that said --no-sql keeps it off; unset, the server's default — on — stands.
+      - GRAPH_SQL_ENABLED=${EMBABEL_SQL:-true}
       # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
       # guides.json from the repository this checkout follows and indexes what is new
       # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
@@ -431,31 +439,3 @@ services:
       - ./WORLD_TEMPLATES.md:/usr/share/nginx/guides/WORLD_TEMPLATES.md:ro
       - ./docs/guide:/usr/share/nginx/guides/guide:ro
       - ./skills:/usr/share/nginx/guides/skills:ro
-
-  # ── SQL endpoint (opt-in) ────────────────────────────────────────────────────
-  # A Postgres-wire surface onto the world, so BI tools, dbt and notebooks can query
-  # it as tables — Metabase, Grafana, DuckDB, psql, even another Postgres via
-  # postgres_fdw. OFF by default: it starts only under the `world-sql` compose
-  # profile, which the installer turns on for `--sql` (setup.py → dockerlib.compose_env
-  # sets COMPOSE_PROFILES). A plain `docker compose up` never starts it. PUBLISHED
-  # FROM embabel-worlds, like the console — pinned separately from EMBABEL_VERSION
-  # because world-sql versions on its own repo.
-  #
-  # It holds NO credentials. A client's own username and password are forwarded per
-  # connection and authenticated against the appliance, so a connection sees exactly
-  # that user's scope — multi-tenant for free, and nothing here is a second identity.
-  world-sql:
-    image: ghcr.io/embabel-worlds/world-sql:${WORLD_SQL_VERSION:-latest}
-    logging: *logging
-    profiles: ["world-sql"]
-    restart: unless-stopped
-    depends_on:
-      - worlds
-    ports:
-      - "127.0.0.1:${WORLDS_SQL_PORT:-15432}:15432"
-    environment:
-      # In-container address of the server: same compose network, container port.
-      - APPLIANCE_BASE=http://worlds:${WORLDS_PORT:-11043}
-      # Bind every interface INSIDE the container; what is exposed is the ports:
-      # line above. The image already defaults to this — explicit is clearer.
-      - WORLDSQL_BIND=0.0.0.0

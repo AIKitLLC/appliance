@@ -75,6 +75,11 @@ services:
       # BOLT_BIND=127.0.0.1 in .env keeps them on this machine.
       - "${BOLT_BIND:-0.0.0.0}:${WORLDS_BOLT_PORT:-11050}:7687"
       - "${BOLT_BIND:-0.0.0.0}:${WORLDS_PERSISTED_BOLT_PORT:-11051}:7688"
+      # SQL, the Postgres wire protocol, for psql, JDBC, BI tools, dbt and postgres_fdw:
+      # the caller's world as tables, served from this JVM. On unless EMBABEL_SQL=false.
+      # In the port block, like Bolt, because it is on for every install now: a fixed
+      # host port would stop the second appliance on a machine from starting at all.
+      - "127.0.0.1:${WORLDS_SQL_PORT:-11052}:15432"
     # Realm credentials, without a compose edit per realm: a realm names the key it
     # needs (`token-env:` in its apis.yml), the key goes in secrets.env beside this
     # file, and every line of it enters the container as-is. Optional and gitignored;
@@ -94,6 +99,9 @@ services:
       # one other machines can dial, written into .env by `embabel up` (embabel_setup/bolt.py).
       - GRAPH_BOLT_ADVERTISED_ADDRESS=${BOLT_PUBLIC_HOST:-localhost}:${WORLDS_BOLT_PORT:-11050}
       - GRAPH_BOLT_PERSISTED_ADVERTISED_ADDRESS=${BOLT_PUBLIC_HOST:-localhost}:${WORLDS_PERSISTED_BOLT_PORT:-11051}
+      # The SQL door's switch. EMBABEL_SQL is the name .env has always used for SQL, so an
+      # install that said --no-sql keeps it off; unset, the server's default — on — stands.
+      - GRAPH_SQL_ENABLED=${EMBABEL_SQL:-true}
       # THE GUIDES THIS APPLIANCE KEEPS CURRENT IN ITS OWN WORLD. The server reads
       # guides.json from the repository this checkout follows and indexes what is new
       # or changed, so an install pinned to a branch or a fork (EMBABEL_REF,
